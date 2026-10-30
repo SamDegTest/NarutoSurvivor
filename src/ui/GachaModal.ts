@@ -3,6 +3,7 @@ import { GachaSystem, type GachaPullResult } from '../systems/gachaSystem';
 import { SaveSystem } from '../systems/saveSystem';
 import { renderStars } from '../systems/promotionSystem';
 import { audioManager } from '../systems/audioManager';
+import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
 
 // ============================================================
 //  NarutoSurvivor — Gacha (Rotoli Ninja) Summoning Modal
@@ -41,6 +42,7 @@ export class GachaModal {
   private currencyText!: Text;
   private resultsContainer!: Container;
   private altarContainer!: Container;
+  private summonNavItems: NavigatableItem[] = [];
 
   constructor(parentStage: Container, W: number, H: number) {
     this.W = W;
@@ -163,7 +165,7 @@ export class GachaModal {
     const startBtnX = (W - totalButtonsW) / 2;
 
     // 1x Scroll
-    this.createButton(
+    const b1 = this.createButton(
       startBtnX,
       btnY,
       btnW,
@@ -174,7 +176,7 @@ export class GachaModal {
     );
 
     // 1x Ryo
-    this.createButton(
+    const b2 = this.createButton(
       startBtnX + (btnW + gap),
       btnY,
       btnW,
@@ -185,7 +187,7 @@ export class GachaModal {
     );
 
     // 10x Scroll
-    this.createButton(
+    const b3 = this.createButton(
       startBtnX + 2 * (btnW + gap),
       btnY,
       btnW,
@@ -196,7 +198,7 @@ export class GachaModal {
     );
 
     // 10x Ryo
-    this.createButton(
+    const b4 = this.createButton(
       startBtnX + 3 * (btnW + gap),
       btnY,
       btnW,
@@ -205,6 +207,13 @@ export class GachaModal {
       0xD97706,
       () => this.doSummon('multi', 'ryo'),
     );
+
+    this.summonNavItems = [
+      { container: b1, onSelect: () => this.doSummon('single', 'scroll') },
+      { container: b2, onSelect: () => this.doSummon('single', 'ryo') },
+      { container: b3, onSelect: () => this.doSummon('multi', 'scroll') },
+      { container: b4, onSelect: () => this.doSummon('multi', 'ryo') },
+    ];
   }
 
   private renderAltar(): void {
@@ -519,6 +528,14 @@ export class GachaModal {
     this.resultsContainer.visible = false;
     this.container.visible = true;
 
+    GamepadMenuNavigator.get()?.pushContext({
+      id: 'gacha_modal',
+      items: this.summonNavItems,
+      columns: 4,
+      selectedIndex: 0,
+      onCancel: () => this.hide(),
+    });
+
     this.escHandler = (e: KeyboardEvent) => {
       if (e.code === 'Escape') this.hide();
     };
@@ -526,6 +543,7 @@ export class GachaModal {
   }
 
   hide(): void {
+    GamepadMenuNavigator.get()?.popContext('gacha_modal');
     if (this.escHandler) {
       window.removeEventListener('keydown', this.escHandler);
       this.escHandler = undefined;

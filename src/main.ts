@@ -5,8 +5,12 @@ import { CharacterSelectScreen } from './ui/CharacterSelect';
 import { GameScene } from './scenes/GameScene';
 import { GachaModal } from './ui/GachaModal';
 import { UpgradesModal } from './ui/UpgradesModal';
+import { ShopModal } from './ui/ShopModal';
+import { MissionsModal } from './ui/MissionsModal';
+import { BagModal } from './ui/BagModal';
 import { SettingsModal } from './ui/SettingsModal';
 import { GenericInfoModal } from './ui/GenericInfoModal';
+import { GamepadMenuNavigator } from './controls/GamepadMenuNavigator';
 import { SaveSystem } from './systems/saveSystem';
 import type { Character } from './types/character';
 
@@ -32,12 +36,18 @@ async function main(): Promise<void> {
   const W = GAME_CONFIG.WIDTH;
   const H = GAME_CONFIG.HEIGHT;
 
+  // Initialize Global Gamepad Menu Navigator
+  new GamepadMenuNavigator(app);
+
   // ── Screens & Modals ─────────────────────────────────────────
   const mainMenu      = new MainMenuScreen(app);
   const selectScreen  = new CharacterSelectScreen(app);
   const gameScene     = new GameScene(app);
   const gachaModal    = new GachaModal(app.stage, W, H);
   const upgradesModal = new UpgradesModal(app.stage, W, H);
+  const shopModal     = new ShopModal(app.stage, W, H);
+  const missionsModal = new MissionsModal(app.stage, W, H);
+  const bagModal      = new BagModal(app.stage, W, H);
   const settingsModal = new SettingsModal(app.stage, W, H);
   const infoModal     = new GenericInfoModal(app.stage, W, H);
 
@@ -91,35 +101,14 @@ async function main(): Promise<void> {
       upgradesModal.show(() => mainMenu.refreshData());
     },
 
-    // 4. Kecleon Shop (Emporio Ninja)
+    // 4. Emporio Ninja & Ichiraku Ramen (Shop)
     onOpenShop: () => {
-      infoModal.show({
-        title: '🏪 EMPORIO NINJA (SHOP)',
-        subtitle: 'Bottega di armi e rifornimenti segreti della Foglia',
-        color: 0xF59E0B,
-        items: [
-          { icon: '📜', title: 'Rotolo di Evocazione Shinobi', desc: 'Permette 1 evocazione al Tempio Ninja Gacha', extra: '¥ 150' },
-          { icon: '💊', title: 'Pillola Rinvigorente delle Tre Vie', desc: '+20% rigenerazione chakra nella prossima run', extra: '¥ 200' },
-          { icon: '🗡️', title: 'Set di Kunai & Sigilli Esplosivi', desc: '+15% probabilità di colpo critico', extra: '¥ 350' },
-          { icon: '🍵', title: 'Tonico di Chakra Puro del Monte Myōboku', desc: 'Ricarica istantanea del Jutsu primario', extra: '¥ 500' },
-        ],
-      });
+      shopModal.show(() => mainMenu.refreshData());
     },
 
     // 5. Bag (Borsa Ninja)
     onOpenBag: () => {
-      const profile = SaveSystem.getProfile();
-      infoModal.show({
-        title: '🎒 BORSA NINJA (BAG)',
-        subtitle: 'Strumenti ed equipaggiamento tattico nell\'inventario',
-        color: 0xEA580C,
-        items: [
-          { icon: '🪙', title: 'Ryo di Konoha', desc: `Valuta accumulata dalle missioni e battaglie`, extra: `¥ ${profile.ryo.toLocaleString()}` },
-          { icon: '📜', title: 'Rotoli di Evocazione', desc: `Pergamene antiche per convocare nuovi shinobi`, extra: `${profile.scrolls} unità` },
-          { icon: '🔖', title: 'Sigilli di Protezione Ninja', desc: `Sigilli difensivi per respingere attacchi nemici`, extra: `${profile.ninjaSeals} unità` },
-          { icon: '🌿', title: 'Erbe Medicinali di Konoha', desc: 'Pronto soccorso da campo per ripristinare HP', extra: '12 unità' },
-        ],
-      });
+      bagModal.show(() => mainMenu.refreshData());
     },
 
     // 6. Gacha (Evocazione Ninja)
@@ -129,17 +118,7 @@ async function main(): Promise<void> {
 
     // 7. Missions (Missioni & Obiettivi)
     onOpenMissions: () => {
-      infoModal.show({
-        title: '🎖️ MISSIONI SHINOBI (MISSIONS)',
-        subtitle: 'Completa incarichi dei grandi paesi ninja per ottenere ricompense',
-        color: 0xEAB308,
-        items: [
-          { icon: '🟢', title: 'Missione Grado D: Pattuglia di Konoha', desc: 'Sopravvivi per almeno 3 minuti in qualunque mappa', extra: 'Premio: 250 ¥' },
-          { icon: '🔵', title: 'Missione Grado C: Respinta dei Rinnegati', desc: 'Sconfiggi almeno 500 nemici in una singola run', extra: 'Premio: 1 Rotolo' },
-          { icon: '🟣', title: 'Missione Grado B: Il Mostro della Nebbia', desc: 'Sconfiggi Kisame Hoshigaki al minuto 3:00', extra: 'Premio: 500 ¥ + 1 Rotolo' },
-          { icon: '🔴', title: 'Missione Grado S: L\'Erede delle Sei Vie', desc: 'Raggiungi il livello 10 con una tecnica combinata attiva', extra: 'Premio: 3 Rotoli' },
-        ],
-      });
+      missionsModal.show(() => mainMenu.refreshData());
     },
 
     // 8. Friends (Squadra Ninja & Co-op)

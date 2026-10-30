@@ -1,6 +1,7 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { SaveSystem } from '../systems/saveSystem';
 import { audioManager } from '../systems/audioManager';
+import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
 
 // ============================================================
 //  NarutoSurvivor — Permanent Upgrades Modal (Albero Talenti)
@@ -146,6 +147,8 @@ export class UpgradesModal {
       },
     ];
 
+    const navItems: NavigatableItem[] = [];
+
     UPGRADE_DATA.forEach((upg, i) => {
       const curLevel = profile.upgrades[upg.key] || 0;
       const cost = Math.round(upg.baseCost * Math.pow(1.5, curLevel));
@@ -190,27 +193,41 @@ export class UpgradesModal {
       btnLabel.x = 70; btnLabel.y = 21;
       btn.addChild(btnLabel);
 
-      btn.on('pointerdown', () => {
+      const upgradeAction = () => {
         if (canAfford) {
           SaveSystem.buyUpgrade(upg.key, cost);
           audioManager.playSFX('promotion');
           this.renderUpgrades();
         }
-      });
+      };
 
+      btn.on('pointerdown', upgradeAction);
+
+      navItems.push({ container: row, onSelect: upgradeAction });
       row.addChild(btn);
       this.listContainer.addChild(row);
     });
+
+    GamepadMenuNavigator.get()?.updateItems(navItems);
   }
 
   show(onClose?: () => void): void {
     this.onCloseCallback = onClose;
     this.renderUpgrades();
     this.container.visible = true;
+    GamepadMenuNavigator.get()?.pushContext({
+      id: 'upgrades_modal',
+      items: [],
+      selectedIndex: 0,
+      onCancel: () => this.hide(),
+    });
+    this.renderUpgrades();
   }
 
   hide(): void {
     this.container.visible = false;
+    GamepadMenuNavigator.get()?.popContext('upgrades_modal');
     if (this.onCloseCallback) this.onCloseCallback();
   }
 }
+

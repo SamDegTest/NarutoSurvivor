@@ -1,5 +1,7 @@
 import { Container, Graphics } from 'pixi.js';
 import type { Enemy } from '../entities/entities';
+import { buildJutsuGraphic } from '../rendering/JutsuVFXFactory';
+import type { ElementalAffinity, JutsuBehavior } from '../types/character';
 
 // ============================================================
 //  NarutoSurvivor — Jutsu Projectile System
@@ -18,6 +20,7 @@ export interface Projectile {
   color: number;
   hitEnemyIds: Set<number>;
   expired: boolean;
+  updateVisual?: (dt: number) => void;
 }
 
 export function createProjectile(
@@ -29,20 +32,21 @@ export function createProjectile(
   radius = 8,
   piercing = 1,
   lifetime = 2.0,
+  element: ElementalAffinity = 'None',
+  jutsuName = '',
+  behavior: JutsuBehavior = 'Projectile',
 ): Projectile {
-  const container = new Container();
-  const g = new Graphics();
+  const { container, update } = buildJutsuGraphic({
+    element,
+    behavior,
+    name: jutsuName,
+    color,
+    radius,
+  });
 
-  // Core glow
-  g.circle(0, 0, radius + 4);
-  g.fill({ color, alpha: 0.25 });
-  // Core body
-  g.circle(0, 0, radius);
-  g.fill({ color });
-
-  container.addChild(g);
   container.x = x;
   container.y = y;
+  container.rotation = angle;
 
   return {
     container, x, y,
@@ -51,6 +55,7 @@ export function createProjectile(
     damage, radius, piercing, lifetime,
     color, hitEnemyIds: new Set(),
     expired: false,
+    updateVisual: update,
   };
 }
 
@@ -131,6 +136,7 @@ export class ProjectileSystem {
       proj.y += proj.vy * dt;
       proj.container.x = proj.x;
       proj.container.y = proj.y;
+      proj.updateVisual?.(dt);
 
       // Check hits
       for (const enemy of enemies) {

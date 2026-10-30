@@ -1,6 +1,7 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { renderStars } from '../systems/promotionSystem';
+import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
 import type { StarRank } from '../types/character';
 
 // ============================================================
@@ -14,6 +15,10 @@ export interface UpgradeOption {
   description: string;
   apply: (stats: UpgradeTarget) => void;
   color: number;
+  type?: 'stat' | 'new_jutsu' | 'jutsu_level' | 'ninja_tool' | 'synergy_evolution';
+  tag?: string;
+  isSynergy?: boolean;
+  levelText?: string;
 }
 
 export interface UpgradeTarget {
@@ -168,52 +173,69 @@ export class LevelUpPanel {
     stage.addChild(this.container);
   }
 
-  show(level: number, onChoose: (opt: UpgradeOption) => void): void {
+  show(level: number, onChoose: (opt: UpgradeOption) => void, customOptions?: UpgradeOption[]): void {
     this.onChoose = onChoose;
     this.container.removeChildren();
     this.container.visible = true;
 
     const W = this.W;
     const H = this.H;
-    const options = pickRandom3();
+    const options = (customOptions && customOptions.length > 0) ? customOptions : pickRandom3();
 
     // Dim overlay
     const overlay = new Graphics();
     overlay.rect(0, 0, W, H);
-    overlay.fill({ color: 0x000000, alpha: 0.78 });
+    overlay.fill({ color: 0x000000, alpha: 0.82 });
     this.container.addChild(overlay);
 
     // Title
-    const title = label(`⬆ LIVELLO ${level} — Scegli un Potenziamento`, 26, 0xFBBF24, true);
+    const hasSynergy = options.some(o => o.isSynergy);
+    const titleText = hasSynergy
+      ? `✨ LIVELLO ${level} — RISVEGLIO SINERGIA DISPONIBILE! ✨`
+      : `⬆ LIVELLO ${level} — Scegli un Potenziamento`;
+    const title = label(titleText, 25, hasSynergy ? 0xFBBF24 : 0xF97316, true);
     title.anchor.set(0.5, 0);
     title.x = W / 2;
-    title.y = H * 0.12;
+    title.y = H * 0.10;
     this.container.addChild(title);
 
     // Subtitle
-    const sub = label('Il tuo percorso ninja si evolve', 14, 0x9CA3AF);
+    const subText = hasSynergy
+      ? 'La combinazione dei tuoi elementi ha sbloccato una Tecnica Segreta!'
+      : 'Evolvi il tuo arsenale ninja per dominare il campo di battaglia';
+    const sub = label(subText, 14, 0x9CA3AF);
     sub.anchor.set(0.5, 0);
     sub.x = W / 2;
-    sub.y = H * 0.12 + 38;
+    sub.y = H * 0.10 + 36;
     this.container.addChild(sub);
 
     // Cards
-    const CARD_W = 230;
-    const CARD_H = 200;
+    const CARD_W = 250;
+    const CARD_H = 220;
     const GAP    = 24;
     const totalW = options.length * CARD_W + (options.length - 1) * GAP;
     const startX = (W - totalW) / 2;
-    const cardY  = H / 2 - CARD_H / 2 + 20;
+    const cardY  = H / 2 - CARD_H / 2 + 15;
+
+    const navCards: NavigatableItem[] = [];
 
     options.forEach((opt, i) => {
       const card = this.buildCard(opt, CARD_W, CARD_H);
       card.x = startX + i * (CARD_W + GAP);
       card.y = cardY;
       this.container.addChild(card);
+      navCards.push({ container: card, onSelect: () => this.choose(opt) });
+    });
+
+    GamepadMenuNavigator.get()?.pushContext({
+      id: 'level_up_panel',
+      items: navCards,
+      columns: 3,
+      selectedIndex: 0,
     });
 
     // Tip
-    const tip = label('Premi 1, 2 o 3 per selezionare rapidamente', 12, 0x4B5563);
+    const tip = label('🎮 Joystick: Sposta focus  •  [ A ]: Seleziona  •  Tastiera: 1, 2, 3', 12, 0x6B7280);
     tip.anchor.set(0.5, 1);
     tip.x = W / 2;
     tip.y = H - 24;
@@ -235,70 +257,102 @@ export class LevelUpPanel {
     card.eventMode = 'static';
     card.cursor = 'pointer';
 
+    const isSyn = !!opt.isSynergy;
+    const borderColor = isSyn ? 0xFBBF24 : opt.color;
+    const borderWidth = isSyn ? 3 : 2;
+
     const bg = new Graphics();
     bg.roundRect(0, 0, W, H, 14);
-    bg.fill({ color: 0x111827 });
-    bg.stroke({ color: opt.color, width: 2, alpha: 0.7 });
+    bg.fill({ color: isSyn ? 0x1A1429 : 0x111827 });
+    bg.stroke({ color: borderColor, width: borderWidth, alpha: isSyn ? 1 : 0.75 });
     card.addChild(bg);
 
+    // Top Tag Badge
+    if (opt.tag || isSyn) {
+      const tagText = isSyn ? '★ SINERGIA ELEMENTALE ★' : opt.tag!;
+      const tagBg = new Graphics();
+      tagBg.roundRect(W / 2 - 80, -10, 160, 20, 10);
+      tagBg.fill({ color: isSyn ? 0x78350F : 0x1F2937 });
+      tagBg.stroke({ color: isSyn ? 0xFBBF24 : opt.color, width: 1.5 });
+      card.addChild(tagBg);
+
+      const tagLbl = label(tagText, 9, isSyn ? 0xFDE68A : 0xE5E7EB, true);
+      tagLbl.anchor.set(0.5);
+      tagLbl.x = W / 2;
+      tagLbl.y = 0;
+      card.addChild(tagLbl);
+    }
+
+    // Level Badge if present
+    if (opt.levelText) {
+      const lvlLbl = label(opt.levelText, 11, opt.color, true);
+      lvlLbl.anchor.set(1, 0);
+      lvlLbl.x = W - 14;
+      lvlLbl.y = 12;
+      card.addChild(lvlLbl);
+    }
+
     // Icon
-    const icon = label(opt.icon, 42);
+    const icon = label(opt.icon, isSyn ? 46 : 40);
     icon.anchor.set(0.5, 0);
     icon.x = W / 2;
-    icon.y = 18;
+    icon.y = 20;
     card.addChild(icon);
 
     // Title
-    const title = label(opt.title, 15, opt.color, true);
+    const title = label(opt.title, 14, isSyn ? 0xFDE68A : opt.color, true);
     title.anchor.set(0.5, 0);
     title.x = W / 2;
-    title.y = 80;
+    title.y = 78;
     card.addChild(title);
 
     // Description (word-wrap)
     const desc = new Text({
       text: opt.description,
       style: new TextStyle({
-        fontFamily: FONT, fontSize: 12, fill: 0xD1D5DB,
+        fontFamily: FONT, fontSize: 11, fill: isSyn ? 0xFEF08A : 0xD1D5DB,
         wordWrap: true, wordWrapWidth: W - 24, align: 'center',
       }),
     });
     desc.anchor.set(0.5, 0);
     desc.x = W / 2;
-    desc.y = 104;
+    desc.y = 102;
     card.addChild(desc);
 
-    // Select glow bar
+    // Select button bar
     const bar = new Graphics();
-    bar.roundRect(20, H - 32, W - 40, 20, 8);
-    bar.fill({ color: opt.color });
+    bar.roundRect(20, H - 34, W - 40, 22, 8);
+    bar.fill({ color: isSyn ? 0xF59E0B : opt.color });
     card.addChild(bar);
-    const selectLbl = label('SELEZIONA', 11, 0x000000, true);
+    const btnText = isSyn ? 'SBLOCCA SINERGIA' : 'SELEZIONA';
+    const selectLbl = label(btnText, 10, isSyn ? 0x000000 : 0x000000, true);
     selectLbl.anchor.set(0.5);
     selectLbl.x = W / 2;
-    selectLbl.y = H - 22;
+    selectLbl.y = H - 23;
     card.addChild(selectLbl);
 
     card.on('pointerover', () => {
       bg.clear();
       bg.roundRect(0, 0, W, H, 14);
-      bg.fill({ color: 0x1F2937 });
-      bg.stroke({ color: opt.color, width: 3 });
+      bg.fill({ color: isSyn ? 0x2A1B3D : 0x1F2937 });
+      bg.stroke({ color: isSyn ? 0xFDE047 : opt.color, width: isSyn ? 4 : 3 });
       card.scale.set(1.04);
     });
     card.on('pointerout', () => {
       bg.clear();
       bg.roundRect(0, 0, W, H, 14);
-      bg.fill({ color: 0x111827 });
-      bg.stroke({ color: opt.color, width: 2, alpha: 0.7 });
+      bg.fill({ color: isSyn ? 0x1A1429 : 0x111827 });
+      bg.stroke({ color: borderColor, width: borderWidth, alpha: isSyn ? 1 : 0.75 });
       card.scale.set(1.0);
     });
+
     card.on('pointertap', () => this.choose(opt));
 
     return card;
   }
 
   private choose(opt: UpgradeOption): void {
+    GamepadMenuNavigator.get()?.popContext('level_up_panel');
     this.container.visible = false;
     if (this.onChoose) this.onChoose(opt);
   }

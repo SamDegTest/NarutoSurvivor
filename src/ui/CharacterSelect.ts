@@ -4,6 +4,7 @@ import { renderStars } from '../systems/promotionSystem';
 import { audioManager } from '../systems/audioManager';
 import { SaveSystem } from '../systems/saveSystem';
 import { GachaModal } from './GachaModal';
+import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
 import type { Character, StarRank, ElementalAffinity } from '../types/character';
 
 // ============================================================
@@ -109,6 +110,7 @@ export class CharacterSelectScreen {
   // HTML Search Overlay
   private searchWrapperEl: HTMLElement | null = null;
   private searchInputEl: HTMLInputElement | null = null;
+  private currentCardNavItems: NavigatableItem[] = [];
 
   setOnBackToMenu(cb: () => void): void {
     this.onBackToMenu = cb;
@@ -834,6 +836,7 @@ export class CharacterSelectScreen {
     const startY = 142;
 
     const selectedCharId = SaveSystem.getSelectedCharacterId();
+    this.currentCardNavItems = [];
 
     pageItems.forEach((char, i) => {
       const col = i % cols;
@@ -843,7 +846,22 @@ export class CharacterSelectScreen {
       card.x = startX + col * (CARD_W + GAP_X);
       card.y = startY + row * (CARD_H + GAP_Y);
       this.cardsLayer.addChild(card);
+
+      this.currentCardNavItems.push({
+        container: card,
+        onSelect: () => {
+          audioManager.playSFX('button_click');
+          if (SaveSystem.isCharacterUnlocked(char.id)) {
+            SaveSystem.setSelectedCharacterId(char.id);
+            if (this.onSelect) this.onSelect(char);
+          } else {
+            this.gachaModal.show(() => this.refreshUI());
+          }
+        },
+      });
     });
+
+    GamepadMenuNavigator.get()?.updateItems(this.currentCardNavItems);
   }
 
   // ── Build Single Card ────────────────────────────────────────
@@ -1135,9 +1153,22 @@ export class CharacterSelectScreen {
     }
 
     this.refreshUI();
+
+    GamepadMenuNavigator.get()?.pushContext({
+      id: 'character_select',
+      items: this.currentCardNavItems,
+      columns: 5,
+      selectedIndex: 0,
+      onCancel: () => {
+        if (this.onBackToMenu) this.onBackToMenu();
+      },
+      onTabPrev: () => this.changePage(-1),
+      onTabNext: () => this.changePage(1),
+    });
   }
 
   hide(): void {
+    GamepadMenuNavigator.get()?.popContext('character_select');
     this.container.visible = false;
     if (this.searchWrapperEl) {
       this.searchWrapperEl.style.display = 'none';

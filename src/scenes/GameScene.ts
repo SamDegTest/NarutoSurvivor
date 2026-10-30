@@ -1,7 +1,7 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import { GAME_CONFIG } from '../config/gameConfig';
 import {
-  Player, Enemy, Collectible, InputManager,
+  Player, Enemy, Collectible,
   ENEMY_TEMPLATES,
   type EnemyConfig,
 } from '../entities/entities';
@@ -15,11 +15,28 @@ import {
   createOrbitalProjectiles,
 } from '../systems/projectileSystem';
 import { HUD } from '../ui/HUD';
-import { LevelUpPanel, PromotionPanel, BossWarningBanner, type UpgradeTarget } from '../ui/Panels';
+import { LevelUpPanel, PromotionPanel, BossWarningBanner, UPGRADE_POOL, type UpgradeTarget, type UpgradeOption } from '../ui/Panels';
 import { computeScaledStats, getNextPromotionTier, tryPromote } from '../systems/promotionSystem';
 import { findCombinedTechnique } from '../data/combinedTechniques';
+import {
+  NINJA_TOOLS,
+  findAvailableSynergyForJutsu,
+  type SynergyRecipe,
+} from '../systems/synergySystem';
 import { audioManager } from '../systems/audioManager';
 import { SaveSystem } from '../systems/saveSystem';
+import { InputHandler } from '../controls/InputHandler';
+import { VirtualJoystick } from '../controls/VirtualJoystick';
+import { GameOverScene } from './GameOverScene';
+import { buildTilemap, randomBiome, BIOME_NAMES, type Biome } from '../rendering/TilemapRenderer';
+import { ParticleSystem } from '../rendering/ParticleSystem';
+import {
+  CANONICAL_JUTSU_CATALOG,
+  getAvailableJutsuForCharacter,
+  type JutsuDefinition,
+  type ActiveJutsuInstance,
+} from '../data/jutsuCatalog';
+import { JutsuFusionModal, type CombatJutsuSlot } from '../ui/JutsuFusionModal';
 import type { Character } from '../types/character';
 import type { StarRank } from '../types/character';
 
@@ -43,7 +60,10 @@ export class GameScene {
   private readonly entityLayer: Container;
   private readonly uiLayer: Container;
 
-  private input!: InputManager;
+  private input!: InputHandler;
+  private virtualJoystick?: VirtualJoystick;
+  private particleSystem!: ParticleSystem;
+  private currentBiome!: Biome;
   private player!: Player;
   private enemies: Enemy[] = [];
   private bosses: Boss[] = [];
@@ -53,13 +73,17 @@ export class GameScene {
   private levelUpPanel!: LevelUpPanel;
   private promotionPanel!: PromotionPanel;
   private bossWarning!: BossWarningBanner;
+  private gameOverScene!: GameOverScene;
 
-  // ── Session state ─────────────────────────────────────────
+  // ── Session state & Metrics ────────────────────────────────
   private elapsedSec = 0;
   private chakraOrbs = 0;
   private ryo = 0;
   private level = 1;
   private xp = 0;
+  private totalKills = 0;
+  private bossesDefeatedCount = 0;
+  private scrollsEarnedInRun = 0;
   private gameOver = false;
   private paused = false;
   private session!: PlayerSession;
@@ -67,10 +91,13 @@ export class GameScene {
   // ── Upgrade target (live mutable stats) ────────────────────
   private upgStats!: UpgradeTarget;
 
-  // ── Jutsu ─────────────────────────────────────────────────
-  private jutsuCooldown = 0;
-  private jutsuCooldownBase = 0;
+  // ── Jutsu & In-Run Synergies ──────────────────────────────
+  private combatSlots: CombatJutsuSlot[] = [];
+  private activeSlotIndex: number = 0;
+  private jutsuFusionModal!: JutsuFusionModal;
   private combinedActive = false;
+  private acquiredTools = new Map<string, number>();
+  private activeSynergy: SynergyRecipe | null = null;
 
   // ── Spawn ─────────────────────────────────────────────────
   private spawnTimer = 0;
@@ -95,6 +122,7 @@ export class GameScene {
     this.world.addChild(this.entityLayer);
     app.stage.addChild(this.world);
     app.stage.addChild(this.uiLayer);
+    this.gameOverScene = new GameOverScene(this.app);
   }
 
   setOnReturnToMenu(cb: () => void): void {
@@ -121,6 +149,9 @@ export class GameScene {
     this.ryo = 0;
     this.level = 1;
     this.xp = 0;
+    this.totalKills = 0;
+    this.bossesDefeatedCount = 0;
+    this.scrollsEarnedInRun = 0;
     this.enemies = [];
     this.bosses  = [];
     this.collectibles = [];
@@ -128,16 +159,25 @@ export class GameScene {
     this.entityLayer.removeChildren();
     this.groundLayer.removeChildren();
     this.uiLayer.removeChildren();
+    this.gameOverScene.hide();
 
     // ── Resume audio context on interaction ───────────────────
     audioManager.resume();
     audioManager.startBGM();
 
-    // ── Input ────────────────────────────────────────────────
-    this.input = new InputManager();
+    // ── Input (keyboard + gamepad + touch) ─────────────────
+    this.input = new InputHandler();
 
-    // ── Ground ───────────────────────────────────────────────
-    this.buildGround();
+    // Wire pause callback from gamepad Start button
+    this.input.onPause = () => {
+      if (this.levelUpPanel.isVisible || this.promotionPanel.isVisible) return;
+      this.paused = !this.paused;
+    };
+
+    // ── Biome & Ground Tilemap ──────────────────────────────
+    this.currentBiome = randomBiome();
+    buildTilemap(this.currentBiome, GAME_CONFIG.WORLD_WIDTH, GAME_CONFIG.WORLD_HEIGHT, this.groundLayer);
+    this.particleSystem = new ParticleSystem(this.entityLayer);
 
     // ── Player stats ─────────────────────────────────────────
     const baseStats = computeScaledStats(session.character, session.rank);
@@ -155,16 +195,88 @@ export class GameScene {
       jutsuCooldownMult:   1.0,
     };
 
+    // Apply permanent talent tree upgrades
+    const prof = SaveSystem.getProfile();
+    const hpTalentBonus = 1 + (prof.upgrades.hpLevel || 0) * 0.10;
+    const dmgTalentBonus = 1 + (prof.upgrades.dmgLevel || 0) * 0.08;
+    const speedTalentBonus = 1 + (prof.upgrades.speedLevel || 0) * 0.05;
+    const ryoTalentBonus = 1 + (prof.upgrades.ryoLevel || 0) * 0.12;
+
+    this.upgStats.maxHp *= hpTalentBonus;
+    this.upgStats.hp = this.upgStats.maxHp;
+    this.upgStats.jutsudmg *= dmgTalentBonus;
+    this.upgStats.movespeed *= speedTalentBonus;
+    this.upgStats.ryomultiplier *= ryoTalentBonus;
+
+    // Apply consumable shop buffs (Ichiraku Ramen & Tenten Charms)
+    const runBuffs = SaveSystem.consumeNextRunBuffs();
+    let hasRunBuffs = false;
+    if (runBuffs.ichirakuRamen) {
+      this.upgStats.maxHp *= 1.30;
+      this.upgStats.hp = this.upgStats.maxHp;
+      this.upgStats.movespeed *= 1.15;
+      hasRunBuffs = true;
+    }
+    if (runBuffs.chakraTonic) {
+      this.upgStats.jutsuCooldownMult *= 0.80;
+      hasRunBuffs = true;
+    }
+    if (runBuffs.militaryPill) {
+      this.upgStats.jutsudmg *= 1.25;
+      this.upgStats.critchance = Math.min(0.85, this.upgStats.critchance + 0.12);
+      hasRunBuffs = true;
+    }
+    if (runBuffs.magnetAmulet) {
+      this.upgStats.collectradius += 90;
+      hasRunBuffs = true;
+    }
+
     // ── Player entity ─────────────────────────────────────────
     this.player = new Player({ ...session.character, baseStats } as Character);
+    this.player.hp = this.upgStats.hp;
+    this.player.maxHp = this.upgStats.maxHp;
     this.entityLayer.addChild(this.player.container);
 
-    // ── Jutsu setup ───────────────────────────────────────────
-    this.jutsuCooldownBase = session.character.jutsuSlot.cooldownSec;
-    this.jutsuCooldown = 0;
+    // ── Active Jutsu setup ────────────────────────────────────
+    this.acquiredTools.clear();
+    this.activeSynergy = null;
     this.projectileSystem = new ProjectileSystem(this.entityLayer);
 
-    // Check if combined technique is active
+    // Initial character signature jutsu
+    const charJutsuSlot = session.character.jutsuSlot;
+    const catalogMatch = CANONICAL_JUTSU_CATALOG.find(
+      j => j.id === charJutsuSlot.id || j.nameIT.toLowerCase() === charJutsuSlot.nameIT.toLowerCase(),
+    );
+    const initialDef: JutsuDefinition = catalogMatch ?? {
+      id: charJutsuSlot.id,
+      nameIT: charJutsuSlot.nameIT,
+      nameJP: charJutsuSlot.nameJP,
+      icon: '🌀',
+      element: charJutsuSlot.element,
+      behavior: charJutsuSlot.behavior,
+      baseDmgCoeff: charJutsuSlot.baseDmgCoeff,
+      cooldownSec: charJutsuSlot.cooldownSec,
+      maxLevel: 5,
+      vfxColor: session.character.assets.color,
+      description: `Tecnica caratteristica di ${session.character.nameIT}`,
+    };
+
+    this.combatSlots = [
+      {
+        id: 'slot_0',
+        name: initialDef.nameIT,
+        moves: [
+          {
+            definition: initialDef,
+            level: 1,
+            cooldownTimer: 0,
+          },
+        ],
+      },
+    ];
+    this.activeSlotIndex = 0;
+
+    // Check if combined technique is active initially
     const combined = findCombinedTechnique(
       session.character.jutsuSlot.id,
       session.character.passiveAbility.id,
@@ -172,23 +284,38 @@ export class GameScene {
     this.combinedActive = !!combined;
     if (this.combinedActive) audioManager.playSFX('combined_activate');
 
-    if (session.character.jutsuSlot.behavior === 'Orbital') {
-      const orbDmg = Math.round(this.upgStats.jutsudmg * session.character.jutsuSlot.baseDmgCoeff * 10);
+    if (initialDef.behavior === 'Orbital') {
+      const orbDmg = Math.round(this.upgStats.jutsudmg * initialDef.baseDmgCoeff * 10);
       const orbs = createOrbitalProjectiles(
-        this.player.x, this.player.y, 3, orbDmg, session.character.assets.color,
+        this.player.x, this.player.y, 3, orbDmg, initialDef.vfxColor,
       );
       this.projectileSystem.setOrbitals(orbs);
     }
 
     // ── HUD ───────────────────────────────────────────────────
     this.hud = new HUD(this.app);
+    this.hud.setOnSelectSlot((idx) => this.selectSlot(idx));
+    this.hud.showToast(`Bioma: ${BIOME_NAMES[this.currentBiome]}`);
+    if (hasRunBuffs) {
+      setTimeout(() => {
+        this.hud.showToast('🍜 Buff Ichiraku & Tenten attivi per questa run!');
+      }, 1800);
+    }
 
     // ── UI Panels ─────────────────────────────────────────────
     const W = this.app.screen.width;
     const H = this.app.screen.height;
-    this.levelUpPanel   = new LevelUpPanel(this.uiLayer, W, H);
-    this.promotionPanel = new PromotionPanel(this.uiLayer, W, H);
-    this.bossWarning    = new BossWarningBanner(this.uiLayer, W, H);
+    this.levelUpPanel    = new LevelUpPanel(this.uiLayer, W, H);
+    this.promotionPanel  = new PromotionPanel(this.uiLayer, W, H);
+    this.bossWarning     = new BossWarningBanner(this.uiLayer, W, H);
+    this.jutsuFusionModal = new JutsuFusionModal(this.uiLayer, W, H);
+
+    // ── Input Slot Selection Callbacks ───────────────────────
+    this.input.onSelectSlot = (idx) => this.selectSlot(idx);
+    this.input.onCycleSlot  = (dir) => this.cycleSlot(dir);
+
+    // ── Virtual Joystick (mobile / touch) ────────────────────
+    this.setupVirtualJoystick();
 
     // ── Keybindings ───────────────────────────────────────────
     this.setupKeybindings();
@@ -206,6 +333,33 @@ export class GameScene {
     this.entityLayer.removeChildren();
     this.groundLayer.removeChildren();
     this.uiLayer.removeChildren();
+    this.virtualJoystick?.hide();
+  }
+
+  // ── Virtual Joystick Setup ───────────────────────────────────
+
+  private setupVirtualJoystick(): void {
+    // Create joystick (always, shown/hidden based on touch detection)
+    this.virtualJoystick = new VirtualJoystick(this.app, this.input);
+
+    // Wire pause button from joystick
+    this.virtualJoystick.onPause = () => {
+      if (this.levelUpPanel.isVisible || this.promotionPanel.isVisible) return;
+      this.paused = !this.paused;
+    };
+
+    // Auto-detect touch capability
+    const isTouchDevice = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+    if (isTouchDevice) {
+      this.virtualJoystick.show();
+    } else {
+      this.virtualJoystick.hide();
+    }
+
+    // Show joystick when first touch detected even on hybrid devices
+    window.addEventListener('touchstart', () => {
+      this.virtualJoystick?.show();
+    }, { once: true, passive: true });
   }
 
   // ── Keybindings ─────────────────────────────────────────────
@@ -230,46 +384,23 @@ export class GameScene {
     window.addEventListener('keydown', this._keyHandler);
   }
 
-  // ── Ground ──────────────────────────────────────────────────
-
-  private buildGround(): void {
-    const W = GAME_CONFIG.WORLD_WIDTH;
-    const H = GAME_CONFIG.WORLD_HEIGHT;
-
-    const ground = new Graphics();
-    ground.rect(0, 0, W, H);
-    ground.fill({ color: GAME_CONFIG.COLORS.GROUND });
-    this.groundLayer.addChild(ground);
-
-    const grid = new Graphics();
-    for (let x = 0; x <= W; x += 128) { grid.moveTo(x, 0); grid.lineTo(x, H); }
-    for (let y = 0; y <= H; y += 128) { grid.moveTo(0, y); grid.lineTo(W, y); }
-    grid.stroke({ color: GAME_CONFIG.COLORS.GRID, width: 1 });
-    this.groundLayer.addChild(grid);
-
-    const foliage = new Graphics();
-    for (let i = 0; i < 500; i++) {
-      foliage.circle(Math.random() * W, Math.random() * H, 3 + Math.random() * 9);
-      foliage.fill({ color: 0x1A3B1A, alpha: 0.55 + Math.random() * 0.3 });
-    }
-    this.groundLayer.addChild(foliage);
-
-    const border = new Graphics();
-    border.rect(0, 0, W, H);
-    border.stroke({ color: 0xFF6B00, width: 8 });
-    this.groundLayer.addChild(border);
-  }
 
   // ── Main Tick ────────────────────────────────────────────────
 
   private tick = (ticker: { deltaTime: number; deltaMS: number }): void => {
     if (this.gameOver) return;
 
+    // ── Poll gamepad (must run every frame) ───────────────────
+    this.input.update();
+
+    // ── Update particles ────────────────────────────────────
+    this.particleSystem.update(ticker.deltaMS / 1000);
+
     // Boss warning and promotion panel use real-time
     const dt = ticker.deltaMS / 1000;
     this.bossWarning.update(dt);
 
-    if (this.paused || this.levelUpPanel.isVisible || this.promotionPanel.isVisible) {
+    if (this.paused || this.levelUpPanel.isVisible || this.promotionPanel.isVisible || this.jutsuFusionModal?.container.visible) {
       this.updateHUD(); // keep HUD updating even when paused
       return;
     }
@@ -287,12 +418,20 @@ export class GameScene {
     this.world.x += (targetX - this.world.x) * GAME_CONFIG.CAMERA_LERP;
     this.world.y += (targetY - this.world.y) * GAME_CONFIG.CAMERA_LERP;
 
-    // ── Jutsu ─────────────────────────────────────────────────
-    const effectiveCooldown = this.jutsuCooldownBase * this.upgStats.jutsuCooldownMult;
-    this.jutsuCooldown -= dt;
-    if (this.jutsuCooldown <= 0) {
-      this.fireJutsu();
-      this.jutsuCooldown = effectiveCooldown;
+    // ── Active Slot Jutsu Cooldowns & Fire ────────────────────
+    const curSlot = this.combatSlots[this.activeSlotIndex];
+    if (curSlot) {
+      for (const aj of curSlot.moves) {
+        aj.cooldownTimer -= dt;
+        if (aj.cooldownTimer <= 0) {
+          this.fireSpecificJutsu(aj);
+          const cdReduction = Math.pow(0.90, aj.level - 1);
+          aj.cooldownTimer = Math.max(
+            0.35,
+            aj.definition.cooldownSec * cdReduction * this.upgStats.jutsuCooldownMult,
+          );
+        }
+      }
     }
 
     // ── Normal Enemies ────────────────────────────────────────
@@ -339,6 +478,9 @@ export class GameScene {
     // ── Process dead enemies ──────────────────────────────────
     this.enemies = this.enemies.filter(e => {
       if (e.isDead) {
+        this.totalKills++;
+        this.particleSystem.emitEnemyDeath(e.x, e.y, e.config.color);
+        this.particleSystem.emitNinjaSmoke(e.x, e.y);
         this.spawnDrops(e.x, e.y, e.config);
         this.entityLayer.removeChild(e.container);
         audioManager.playSFX('enemy_die');
@@ -349,6 +491,7 @@ export class GameScene {
 
     this.bosses = this.bosses.filter(b => {
       if (b.isDead) {
+        this.particleSystem.emitBossDeath(b.x, b.y, b.config.color, b.config.accentColor);
         this.onBossDead(b);
         this.entityLayer.removeChild(b.container);
         return false;
@@ -356,12 +499,15 @@ export class GameScene {
       return true;
     });
 
-    // ── Collectibles ──────────────────────────────────────────
+    // ── Collectibles (Physical Scatter & Magnetic Suction) ────
     this.collectibles = this.collectibles.filter(c => {
       if (c.collected) return false;
-      c.update(dt);
       const dist = Math.hypot(c.x - this.player.x, c.y - this.player.y);
       if (dist < this.upgStats.collectradius) {
+        c.isMagnetized = true;
+      }
+      const absorbed = c.update(dt, this.player.x, this.player.y);
+      if (absorbed) {
         this.collectItem(c);
         c.collected = true;
         this.entityLayer.removeChild(c.container);
@@ -400,11 +546,25 @@ export class GameScene {
         this.ryo,
         this.elapsedSec,
         this.level,
-        this.enemies.filter(e => e.isDead).length,
-        this.bosses.some(b => b.isDead),
+        this.totalKills,
+        this.bossesDefeatedCount > 0,
       );
       SaveSystem.addFragments(this.session.character.id, this.currentFragments);
-      this.hud.showGameOver(
+      this.gameOverScene.show(
+        {
+          character: this.session.character,
+          rank: this.currentRank,
+          elapsedSec: this.elapsedSec,
+          level: this.level,
+          kills: this.totalKills,
+          bossesDefeated: this.bossesDefeatedCount,
+          chakraCollected: this.chakraOrbs,
+          ryoEarned: this.ryo,
+          fragmentsEarned: Math.max(0, this.currentFragments - this.session.fragments),
+          scrollsEarned: this.scrollsEarnedInRun,
+          activeSynergyName: this.activeSynergy?.nameIT,
+          isVictory: false,
+        },
         () => this.restart(),
         () => this.returnToMenu(),
       );
@@ -413,67 +573,165 @@ export class GameScene {
     this.updateHUD();
   };
 
+  selectSlot(idx: number): void {
+    if (idx >= 0 && idx < this.combatSlots.length && idx !== this.activeSlotIndex) {
+      this.activeSlotIndex = idx;
+      audioManager.playSFX('button_click');
+      const slot = this.combatSlots[idx];
+      const names = slot.moves.map(m => m.definition.nameIT).join(' + ');
+      this.hud.showToast(`⚡ Mossa Attiva: ${names}`);
+    }
+  }
+
+  cycleSlot(dir: -1 | 1): void {
+    if (this.combatSlots.length <= 1) return;
+    const next = (this.activeSlotIndex + dir + this.combatSlots.length) % this.combatSlots.length;
+    this.selectSlot(next);
+  }
+
+  private mergeSlots(slotAIdx: number, slotBIdx: number): void {
+    const slotA = this.combatSlots[slotAIdx];
+    const slotB = this.combatSlots[slotBIdx];
+    if (!slotA || !slotB || slotAIdx === slotBIdx) return;
+    if (slotA.moves.length + slotB.moves.length > 4) return;
+
+    // Merge moves from B into A
+    slotA.moves.push(...slotB.moves);
+    slotA.name = slotA.moves.map(m => m.definition.nameIT).join(' + ');
+
+    // Remove slot B
+    this.combatSlots.splice(slotBIdx, 1);
+    this.activeSlotIndex = Math.min(this.activeSlotIndex, this.combatSlots.length - 1);
+
+    audioManager.playSFX('combined_activate');
+    this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+    this.hud.showToast(`💥 FUSIONE RIUSCITA! Le tecniche ora sparano contemporaneamente!`);
+  }
+
   // ── Jutsu Fire ───────────────────────────────────────────────
 
-  private fireJutsu(): void {
-    const jutsu = this.session.character.jutsuSlot;
-    const combined = this.combinedActive
+  private fireSpecificJutsu(aj: ActiveJutsuInstance): void {
+    const jutsu = aj.definition;
+    const syn = this.activeSynergy;
+    const primarySlot = this.combatSlots[0];
+    const isPrimary = primarySlot?.moves.some(m => m.definition.id === jutsu.id) ?? false;
+    const combined = (isPrimary && !syn && this.combinedActive)
       ? findCombinedTechnique(jutsu.id, this.session.character.passiveAbility.id)
       : null;
 
-    const dmgMult = combined ? combined.dmgMultiplier : 1.0;
-    const rawDmg = this.upgStats.jutsudmg * jutsu.baseDmgCoeff * 10;
+    const synMult = (syn && isPrimary) ? syn.dmgMultiplier : 1.0;
+    const combMult = combined ? combined.dmgMultiplier : 1.0;
+    const lvlMult = 1 + (aj.level - 1) * 0.35;
+    const rawDmg = this.upgStats.jutsudmg * jutsu.baseDmgCoeff * lvlMult * 10;
     const isCrit = Math.random() < this.upgStats.critchance;
-    const dmg = Math.round(rawDmg * dmgMult * (isCrit ? this.upgStats.critdmg : 1));
+    const dmg = Math.round(rawDmg * synMult * combMult * (isCrit ? this.upgStats.critdmg : 1));
 
     const nearest = this.findNearest();
     const angle = nearest
       ? Math.atan2(nearest.y - this.player.y, nearest.x - this.player.x)
       : -Math.PI / 2;
 
-    const color = combined
-      ? combined.vfxColor
-      : this.session.character.assets.color;
+    const color = (syn && isPrimary)
+      ? syn.vfxColor
+      : (combined ? combined.vfxColor : jutsu.vfxColor);
 
-    if (combined?.behavior === 'GravityPulse') {
-      this.fireGravityPulse(dmg, combined.specialParam.pullRadius, color);
+    const effectiveBehavior = (syn && isPrimary)
+      ? syn.behavior
+      : (combined ? combined.behavior : jutsu.behavior);
+
+    const jName = (syn && isPrimary) ? syn.nameIT : jutsu.nameIT;
+    const jElem = jutsu.element;
+
+    if (effectiveBehavior === 'AreaPersistent' || effectiveBehavior === 'Explosion') {
+      this.fireGravityPulse(dmg * 1.5, 260 + (aj.level - 1) * 20, color);
       audioManager.playSFX('combined_activate');
-    } else if (jutsu.behavior === 'Beam' || combined?.behavior === 'BeamExploding') {
-      const proj = createProjectile(this.player.x, this.player.y, angle, 950, dmg * 2, color, 7, combined ? 8 : 5, 0.8);
+    } else if (effectiveBehavior === 'Beam') {
+      const proj = createProjectile(
+        this.player.x, this.player.y,
+        angle,
+        960,
+        dmg * 2,
+        color,
+        7 + aj.level,
+        8 + aj.level * 2,
+        0.8,
+        jElem,
+        jName,
+        'Beam',
+      );
       this.projectileSystem.fireProjectile(proj);
       audioManager.playSFX('jutsu_beam');
-    } else if (jutsu.behavior === 'ProjectileOmni') {
-      const count = combined ? 12 : 8;
+    } else if (effectiveBehavior === 'ProjectileOmni') {
+      const count = (syn && isPrimary) ? 16 : (8 + aj.level * 2);
       for (let i = 0; i < count; i++) {
         const a = (i / count) * Math.PI * 2;
-        const proj = createProjectile(this.player.x, this.player.y, a, 520, dmg, color, 9, 2, 1.5);
+        const proj = createProjectile(
+          this.player.x, this.player.y,
+          a,
+          560,
+          dmg,
+          color,
+          8 + aj.level,
+          2 + Math.floor(aj.level / 2),
+          1.6,
+          jElem,
+          jName,
+          'ProjectileOmni',
+        );
         this.projectileSystem.fireProjectile(proj);
       }
       audioManager.playSFX('jutsu_omni');
-    } else if (jutsu.behavior === 'ProjectileSpread') {
-      const spreadCount = combined ? 7 : 5;
-      const fan = 0.55;
+    } else if (effectiveBehavior === 'ProjectileSpread') {
+      const spreadCount = (syn && isPrimary) ? 8 : (3 + aj.level);
+      const fan = 0.60;
       for (let i = 0; i < spreadCount; i++) {
-        const offset = ((i / (spreadCount - 1)) - 0.5) * fan;
+        const offset = ((i / Math.max(1, spreadCount - 1)) - 0.5) * fan;
         const proj = createProjectile(
           this.player.x, this.player.y,
           angle + offset,
-          580,
-          Math.round(dmg * 0.75),
+          620,
+          Math.round(dmg * 0.90),
           color,
-          7,
-          combined ? 3 : 2,
-          1.8,
+          8 + aj.level,
+          (syn && isPrimary) ? 4 : (1 + Math.floor(aj.level / 2)),
+          2.0,
+          jElem,
+          jName,
+          'ProjectileSpread',
         );
         this.projectileSystem.fireProjectile(proj);
       }
       audioManager.playSFX('jutsu_fire');
-    } else if (jutsu.behavior === 'Orbital') {
-      const proj = createProjectile(this.player.x, this.player.y, angle, 540, Math.round(dmg * 1.2), color, 9, 3, 1.8);
+    } else if (effectiveBehavior === 'Orbital') {
+      const proj = createProjectile(
+        this.player.x, this.player.y,
+        angle,
+        540,
+        Math.round(dmg * 1.2),
+        color,
+        9,
+        3,
+        1.8,
+        jElem,
+        jName,
+        'Orbital',
+      );
       this.projectileSystem.fireProjectile(proj);
       audioManager.playSFX('jutsu_fire');
     } else {
-      const proj = createProjectile(this.player.x, this.player.y, angle, 500, dmg, color, 8, combined ? 4 : 1, 2.2);
+      const proj = createProjectile(
+        this.player.x, this.player.y,
+        angle,
+        540,
+        dmg,
+        color,
+        8 + aj.level,
+        1 + Math.floor(aj.level / 2),
+        2.2,
+        jElem,
+        jName,
+        'Projectile',
+      );
       this.projectileSystem.fireProjectile(proj);
       audioManager.playSFX('jutsu_fire');
     }
@@ -524,6 +782,7 @@ export class GameScene {
     const eff = Math.max(1, rawDmg - this.upgStats.defense);
     this.upgStats.hp = Math.max(0, this.upgStats.hp - eff);
     this.player.hp = this.upgStats.hp;
+    this.particleSystem.emitPlayerHit(this.player.x, this.player.y);
     audioManager.playSFX('player_hurt');
   }
 
@@ -565,6 +824,8 @@ export class GameScene {
   }
 
   private onBossDead(boss: Boss): void {
+    this.bossesDefeatedCount++;
+    this.scrollsEarnedInRun++;
     audioManager.playSFX('boss_die');
     // Big drop
     for (let i = 0; i < 15; i++) {
@@ -588,6 +849,18 @@ export class GameScene {
     SaveSystem.addScrolls(1);
     this.hud.showToast(`📜 +1 Rotolo di Evocazione da ${boss.config.nameIT}!`);
     this.hud.showToast(`✦ +${boss.config.fragments} Frammenti da ${boss.config.nameIT}!`);
+
+    // ── Boss Defeated: Trigger Jutsu Fusion Modal if player has >= 2 slots ──
+    if (this.combatSlots.length >= 2) {
+      setTimeout(() => {
+        if (!this.gameOver && !this.levelUpPanel.isVisible) {
+          this.jutsuFusionModal.show(
+            this.combatSlots,
+            (slotAIdx, slotBIdx) => this.mergeSlots(slotAIdx, slotBIdx),
+          );
+        }
+      }, 900);
+    }
   }
 
   // ── Drops & Collection ───────────────────────────────────────
@@ -595,16 +868,24 @@ export class GameScene {
   private spawnDrops(x: number, y: number, config: EnemyConfig): void {
     const orbCount = Math.ceil(config.expValue / 8);
     for (let i = 0; i < orbCount; i++) {
-      const ox = x + (Math.random() - 0.5) * 40;
-      const oy = y + (Math.random() - 0.5) * 40;
-      const orb = new Collectible(ox, oy, 'chakra_orb',
-        Math.round(GAME_CONFIG.CHAKRA_ORB_BASE_VALUE * this.upgStats.chakraorbmultiplier));
+      const ivx = (Math.random() - 0.5) * 160;
+      const ivy = (Math.random() - 0.5) * 160;
+      const orb = new Collectible(
+        x, y, 'chakra_orb',
+        Math.round(GAME_CONFIG.CHAKRA_ORB_BASE_VALUE * this.upgStats.chakraorbmultiplier),
+        ivx, ivy,
+      );
       this.collectibles.push(orb);
       this.entityLayer.addChild(orb.container);
     }
     if (Math.random() < GAME_CONFIG.RYO_DROP_CHANCE) {
-      const ryo = new Collectible(x, y, 'ryo_coin',
-        Math.round(config.ryoValue * this.upgStats.ryomultiplier));
+      const ivx = (Math.random() - 0.5) * 120;
+      const ivy = (Math.random() - 0.5) * 120;
+      const ryo = new Collectible(
+        x, y, 'ryo_coin',
+        Math.round(config.ryoValue * this.upgStats.ryomultiplier),
+        ivx, ivy,
+      );
       this.collectibles.push(ryo);
       this.entityLayer.addChild(ryo.container);
     }
@@ -618,11 +899,13 @@ export class GameScene {
     if (c.type === 'chakra_orb') {
       this.chakraOrbs += c.value;
       this.xp += c.value;
+      this.particleSystem.emitChakraCollect(c.x, c.y, c.value);
       audioManager.playSFX('collect_orb');
       this.checkLevelUp();
     } else {
       this.ryo += c.value;
       audioManager.playSFX('collect_ryo');
+      this.particleSystem.emitRyoCollect(c.x, c.y);
     }
   }
 
@@ -633,19 +916,212 @@ export class GameScene {
       this.level++;
       audioManager.playSFX('level_up');
       this.hud.showToast(`⬆ Livello ${this.level}!`);
+      this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+
+      const options = this.generateLevelUpOptions();
       this.levelUpPanel.show(this.level, (opt) => {
         opt.apply(this.upgStats);
         // Sync player HP
         this.player.hp    = this.upgStats.hp;
         this.player.maxHp = this.upgStats.maxHp;
         // Update orbitals if stats changed
-        if (this.session.character.jutsuSlot.behavior === 'Orbital') {
-          const orbDmg = Math.round(this.upgStats.jutsudmg * this.session.character.jutsuSlot.baseDmgCoeff * 10);
-          const orbs = createOrbitalProjectiles(this.player.x, this.player.y, 3, orbDmg, this.session.character.assets.color);
-          this.projectileSystem.setOrbitals(orbs);
+        for (const s of this.combatSlots) {
+          for (const aj of s.moves) {
+            if (aj.definition.behavior === 'Orbital') {
+              const orbDmg = Math.round(this.upgStats.jutsudmg * aj.definition.baseDmgCoeff * 10);
+              const orbs = createOrbitalProjectiles(this.player.x, this.player.y, 3, orbDmg, aj.definition.vfxColor);
+              this.projectileSystem.setOrbitals(orbs);
+            }
+          }
         }
+      }, options);
+    }
+  }
+
+  // ── In-Run Level Up Option Generator (Synergies + Tools + Jutsu + Stats) ──
+
+  private generateLevelUpOptions(): UpgradeOption[] {
+    const options: UpgradeOption[] = [];
+
+    // ── OPZIONE 1: MOSSA JUTSU (Nuova Mossa Canonica dell'Anime o Upgrade o Sinergia) ──
+    const currentLearnedIds = new Set<string>();
+    const allMoves: ActiveJutsuInstance[] = [];
+    for (const s of this.combatSlots) {
+      for (const m of s.moves) {
+        currentLearnedIds.add(m.definition.id);
+        allMoves.push(m);
+      }
+    }
+    const availableNewJutsu = getAvailableJutsuForCharacter(this.session.character, currentLearnedIds);
+
+    // Check if a synergy can be awakened
+    const primaryJutsu = this.combatSlots[0]?.moves[0]?.definition;
+    const candidateRecipe = primaryJutsu ? findAvailableSynergyForJutsu(primaryJutsu.id, primaryJutsu.nameIT) : null;
+    let addedJutsuOption = false;
+
+    if (candidateRecipe && !this.activeSynergy) {
+      const hasRequiredTool = this.acquiredTools.has(candidateRecipe.requiredToolId);
+      const isHighLevel = (this.combatSlots[0]?.moves[0]?.level ?? 1) >= 3;
+      if (hasRequiredTool && isHighLevel) {
+        options.push({
+          id: `synergy_${candidateRecipe.id}`,
+          icon: '🌟',
+          title: candidateRecipe.nameIT,
+          description: `${candidateRecipe.description} (+${Math.round((candidateRecipe.dmgMultiplier - 1) * 100)}% Danno)`,
+          color: 0xFBBF24,
+          isSynergy: true,
+          type: 'synergy_evolution',
+          tag: '★ RISVEGLIO SINERGIA ★',
+          levelText: 'SUPREMO',
+          apply: () => {
+            this.activateSynergy(candidateRecipe);
+          },
+        });
+        addedJutsuOption = true;
+      }
+    }
+
+    if (!addedJutsuOption) {
+      const MAX_TOTAL_SLOTS = 4;
+      if (this.combatSlots.length < MAX_TOTAL_SLOTS && availableNewJutsu.length > 0) {
+        const nextJutsuDef = availableNewJutsu[0];
+        options.push({
+          id: `new_jutsu_${nextJutsuDef.id}`,
+          icon: nextJutsuDef.icon,
+          title: `${nextJutsuDef.nameIT}`,
+          description: `${nextJutsuDef.description} [${nextJutsuDef.element} • Danno ×${nextJutsuDef.baseDmgCoeff.toFixed(1)}]`,
+          color: nextJutsuDef.vfxColor,
+          type: 'new_jutsu',
+          tag: '🌀 NUOVA MOSSA ANIME',
+          levelText: 'APPRENDI',
+          apply: () => {
+            const newInst: ActiveJutsuInstance = {
+              definition: nextJutsuDef,
+              level: 1,
+              cooldownTimer: 0.2,
+            };
+            this.combatSlots.push({
+              id: `slot_${this.combatSlots.length}`,
+              name: nextJutsuDef.nameIT,
+              moves: [newInst],
+            });
+            if (nextJutsuDef.behavior === 'Orbital') {
+              const orbDmg = Math.round(this.upgStats.jutsudmg * nextJutsuDef.baseDmgCoeff * 10);
+              const orbs = createOrbitalProjectiles(this.player.x, this.player.y, 3, orbDmg, nextJutsuDef.vfxColor);
+              this.projectileSystem.setOrbitals(orbs);
+            }
+            this.hud.showToast(`🌀 Nuova Mossa nello Slot #${this.combatSlots.length}: ${nextJutsuDef.nameIT}!`);
+          },
+        });
+      } else {
+        const upgradable = allMoves.filter(a => a.level < a.definition.maxLevel);
+        if (upgradable.length > 0) {
+          const targetJutsu = upgradable[0];
+          const nextLvl = targetJutsu.level + 1;
+          options.push({
+            id: `jutsu_lvl_${targetJutsu.definition.id}`,
+            icon: targetJutsu.definition.icon,
+            title: `${targetJutsu.definition.nameIT} (Lv. ${nextLvl})`,
+            description: `Potenzia la tecnica: +35% Danno, +raggio d'azione e -10% Cooldown. (Livello ${nextLvl}/5)`,
+            color: targetJutsu.definition.vfxColor,
+            type: 'jutsu_level',
+            tag: '🌀 POTENZIAMENTO MOSSA',
+            levelText: `Lv. ${nextLvl}/5`,
+            apply: (stats) => {
+              targetJutsu.level++;
+              stats.jutsudmg *= 1.15;
+              this.hud.showToast(`🌀 ${targetJutsu.definition.nameIT} potenziato a Livello ${targetJutsu.level}!`);
+            },
+          });
+        } else {
+          options.push({
+            id: 'jutsu_mastery',
+            icon: '⚡',
+            title: 'Maestria del Chakra Shinobi',
+            description: '+40% Danno a tutte le mosse Jutsu possedute',
+            color: 0x38BDF8,
+            type: 'jutsu_level',
+            tag: '🌀 MAESTRIA JUTSU',
+            levelText: 'MAX',
+            apply: (stats) => {
+              stats.jutsudmg *= 1.40;
+              this.hud.showToast('⚡ Maestria Jutsu: Danno aumentato del 40%!');
+            },
+          });
+        }
+      }
+    }
+
+    // ── OPZIONE 2: STRUMENTO NINJA PASSIVO ──────────────────
+    const availableTools = NINJA_TOOLS.filter(t => (this.acquiredTools.get(t.id) ?? 0) < t.maxLevel);
+    if (availableTools.length > 0) {
+      if (candidateRecipe && !this.activeSynergy) {
+        availableTools.sort((a, b) => {
+          if (a.id === candidateRecipe.requiredToolId) return -1;
+          if (b.id === candidateRecipe.requiredToolId) return 1;
+          return 0;
+        });
+      }
+      const tool = availableTools[0];
+      const curLvl = this.acquiredTools.get(tool.id) ?? 0;
+      const nextLvl = curLvl + 1;
+      const isSynComponent = candidateRecipe?.requiredToolId === tool.id;
+
+      options.push({
+        id: `tool_${tool.id}`,
+        icon: tool.icon,
+        title: `${tool.nameIT} ${nextLvl > 1 ? `(Lv. ${nextLvl})` : ''}`,
+        description: `${tool.description} [${tool.statBonusText}]${isSynComponent ? ' ✦ Compatibile con Sinergia!' : ''}`,
+        color: tool.color,
+        type: 'ninja_tool',
+        tag: isSynComponent ? '✦ SINERGIA COMPATIBILE' : '🗡️ STRUMENTO NINJA',
+        levelText: `Lv. ${nextLvl}/${tool.maxLevel}`,
+        apply: (stats) => {
+          this.acquiredTools.set(tool.id, nextLvl);
+          tool.apply(stats, nextLvl);
+          this.hud.showToast(`🗡 ${tool.nameIT} Livello ${nextLvl}!`);
+        },
+      });
+    } else {
+      options.push({
+        id: 'ninja_pouch_buff',
+        icon: '🎒',
+        title: 'Borsa Tattica Completa',
+        description: '+25% Difesa e +20% Velocità di Raccolta Chakra',
+        color: 0xEA580C,
+        type: 'ninja_tool',
+        tag: '🗡️ STRUMENTO NINJA',
+        levelText: 'MAX',
+        apply: (stats) => {
+          stats.defense += 25;
+          stats.collectradius += 40;
+          this.hud.showToast('🎒 Difesa e Raccolta potenziate!');
+        },
       });
     }
+
+    // ── OPZIONE 3: POTENZIAMENTO DI STATS ───────────────────
+    const statPool = [...UPGRADE_POOL];
+    const rndIdx = Math.floor(Math.random() * statPool.length);
+    const chosenStat = statPool[rndIdx];
+    options.push({
+      ...chosenStat,
+      tag: '⚡ POTENZIAMENTO STATISTICHE',
+      type: 'stat',
+      levelText: '+BUFF',
+    });
+
+    return options;
+  }
+
+  private activateSynergy(recipe: SynergyRecipe): void {
+    this.activeSynergy = recipe;
+    this.combinedActive = true;
+    this.upgStats.jutsudmg *= recipe.dmgMultiplier;
+    this.upgStats.jutsuCooldownMult = Math.max(0.2, this.upgStats.jutsuCooldownMult * recipe.cooldownMultiplier);
+    audioManager.playSFX('combined_activate');
+    this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+    this.hud.showToast(recipe.announcement);
   }
 
   // ── Promotion Panel ──────────────────────────────────────────
@@ -746,6 +1222,21 @@ export class GameScene {
       fragments:     this.currentFragments,
       paused:        this.paused,
       combinedActive: this.combinedActive,
+      inputSource:   this.input.lastSource,
+      slots:         this.combatSlots.map((s, i) => ({
+        id: s.id,
+        moves: s.moves.map(m => ({
+          icon: m.definition.icon,
+          name: m.definition.nameIT,
+          level: m.level,
+          color: m.definition.vfxColor,
+        })),
+        isActive: i === this.activeSlotIndex,
+      })),
+      activeTools:   Array.from(this.acquiredTools.entries()).map(([id, lvl]) => {
+        const tool = NINJA_TOOLS.find(t => t.id === id);
+        return { icon: tool?.icon || '🗡️', name: tool?.nameIT || id, level: lvl };
+      }),
     });
   }
 

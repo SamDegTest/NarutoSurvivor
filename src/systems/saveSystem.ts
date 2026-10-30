@@ -13,6 +13,13 @@ export const STARTER_CHARACTER_IDS = [
   'sakura_genin',
 ];
 
+export interface NextRunBuffs {
+  ichirakuRamen?: boolean; // +30% HP, +15% Speed
+  chakraTonic?: boolean;   // -20% Cooldown
+  militaryPill?: boolean;  // +25% Danno Jutsu, +12% Crit
+  magnetAmulet?: boolean;  // +90px Magnetismo
+}
+
 export interface PlayerProfile {
   playerName: string;
   ninjaRank: string;
@@ -34,6 +41,7 @@ export interface PlayerProfile {
     speedLevel: number;
     ryoLevel: number;
   };
+  nextRunBuffs?: NextRunBuffs;
 }
 
 const DEFAULT_PROFILE: PlayerProfile = {
@@ -223,5 +231,25 @@ export class SaveSystem {
       profile.scrolls += 1;
     }
     this.saveProfile(profile);
+  }
+
+  static getNextRunBuffs(): NextRunBuffs {
+    const profile = this.getProfile();
+    return profile.nextRunBuffs || {};
+  }
+
+  static setNextRunBuff(buffKey: keyof NextRunBuffs, value: boolean): void {
+    const profile = this.getProfile();
+    if (!profile.nextRunBuffs) profile.nextRunBuffs = {};
+    profile.nextRunBuffs[buffKey] = value;
+    this.saveProfile(profile);
+  }
+
+  static consumeNextRunBuffs(): NextRunBuffs {
+    const profile = this.getProfile();
+    const buffs = { ...(profile.nextRunBuffs || {}) };
+    profile.nextRunBuffs = {};
+    this.saveProfile(profile);
+    return buffs;
   }
 }

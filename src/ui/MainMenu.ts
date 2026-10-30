@@ -3,6 +3,7 @@ import { ROSTER, getCharacterById } from '../data/roster';
 import { SaveSystem } from '../systems/saveSystem';
 import { audioManager } from '../systems/audioManager';
 import { renderStars } from '../systems/promotionSystem';
+import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
 import type { Character } from '../types/character';
 
 // ============================================================
@@ -545,6 +546,7 @@ export class MainMenuScreen {
         item.action();
       });
 
+      this.navItems.push({ container: row, onSelect: () => item.action() });
       sidebar.addChild(row);
     });
 
@@ -595,16 +597,24 @@ export class MainMenuScreen {
     this.container.addChild(footerTxt);
   }
 
+  private navItems: NavigatableItem[] = [];
+
   // ── Public Update / Show ────────────────────────────────────────
 
   show(callbacks: MainMenuCallbacks): void {
     this.callbacks = callbacks;
     this.refreshData();
     this.container.visible = true;
+    GamepadMenuNavigator.get()?.setContext({
+      id: 'main_menu',
+      items: this.navItems,
+      selectedIndex: 0,
+    });
   }
 
   hide(): void {
     this.container.visible = false;
+    GamepadMenuNavigator.get()?.popContext('main_menu');
   }
 
   refreshData(): void {

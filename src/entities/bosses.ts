@@ -1,5 +1,6 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { GAME_CONFIG } from '../config/gameConfig';
+import { buildBossSprite } from '../rendering/SpriteFactory';
 
 // ============================================================
 //  NarutoSurvivor — Boss Entities
@@ -104,7 +105,7 @@ export const BOSS_CONFIGS: Record<BossType, BossConfig> = {
 
 export class Boss {
   readonly container: Container;
-  private readonly body: Graphics;
+  private body: Graphics;
   private readonly nameplate: Text;
   private readonly hpBarBg: Graphics;
   private readonly hpBarFill: Graphics;
@@ -125,6 +126,21 @@ export class Boss {
 
   private static _idCounter = 0;
 
+  private rebuildSprite(phase2: boolean): void {
+    // Remove old sprite
+    if (this.body.parent) this.body.parent.removeChild(this.body);
+    const idx = this.container.children.indexOf(this.body);
+    if (idx > 0) {
+      this.container.removeChildAt(idx);
+    }
+    // Build new sprite
+    const newSprite = buildBossSprite(this.config, phase2);
+    // Insert after phaseAura (index 1)
+    this.container.addChildAt(newSprite, 1);
+    // Update reference
+    this.body = newSprite;
+  }
+
   constructor(x: number, y: number, config: BossConfig, minute: number) {
     this.id = ++Boss._idCounter;
     this.x = x;
@@ -140,9 +156,8 @@ export class Boss {
     this.phaseAura = new Graphics();
     this.container.addChild(this.phaseAura);
 
-    // ── Body ────────────────────────────────────────────────
-    this.body = new Graphics();
-    this.drawBody();
+    // ── Body (pixel-art boss sprite) ─────────────────────────
+    this.body = buildBossSprite(config, false);
     this.container.addChild(this.body);
 
     // ── HP bar ───────────────────────────────────────────────
@@ -175,40 +190,6 @@ export class Boss {
     this.container.y = y;
   }
 
-  private drawBody(): void {
-    const c = this.config;
-    this.body.clear();
-
-    // Shadow
-    this.body.ellipse(0, c.size * 0.8, c.size * 1.2, c.size * 0.3);
-    this.body.fill({ color: 0x000000, alpha: 0.35 });
-
-    // Main body (hexagon-ish)
-    const r = c.size;
-    const pts: number[] = [];
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-      pts.push(Math.cos(a) * r, Math.sin(a) * r);
-    }
-    this.body.poly(pts);
-    this.body.fill({ color: c.color });
-    this.body.poly(pts);
-    this.body.stroke({ color: c.accentColor, width: 3 });
-
-    // Eyes
-    [-12, 12].forEach(ex => {
-      this.body.circle(ex, -6, 6);
-      this.body.fill({ color: this.isPhase2 ? 0xFF0000 : c.accentColor });
-      this.body.circle(ex, -6, 3);
-      this.body.fill({ color: 0x000000 });
-    });
-
-    // Rinnegan dot (for Pain)
-    if (c.type === 'pain_tendo') {
-      this.body.circle(0, -6, 4);
-      this.body.fill({ color: 0x7C3AED });
-    }
-  }
 
   private updateHPBar(): void {
     const barW = this.config.size * 4;
@@ -247,7 +228,7 @@ export class Boss {
     // Phase 2 trigger
     if (!this.isPhase2 && this.hp / this.maxHp <= this.config.phase2HpPercent) {
       this.isPhase2 = true;
-      this.drawBody();
+      this.rebuildSprite(true);
     }
 
     // Special attack

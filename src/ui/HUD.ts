@@ -5,6 +5,19 @@ import { GAME_CONFIG } from '../config/gameConfig';
 //  NarutoSurvivor — HUD / UI Overlay (v2)
 // ============================================================
 
+export interface HUDSlotMove {
+  icon: string;
+  name: string;
+  level: number;
+  color: number;
+}
+
+export interface HUDSlotData {
+  id: string;
+  moves: HUDSlotMove[];
+  isActive: boolean;
+}
+
 interface HUDData {
   hp: number;
   maxHp: number;
@@ -20,6 +33,10 @@ interface HUDData {
   fragments: number;
   paused: boolean;
   combinedActive: boolean;
+  inputSource?: 'keyboard' | 'gamepad' | 'touch';
+  activeJutsu?: Array<{ icon: string; name: string; level: number }>;
+  activeTools?: Array<{ icon: string; name: string; level: number }>;
+  slots?: HUDSlotData[];
 }
 
 const FONT = GAME_CONFIG.FONT_FAMILY;
@@ -61,12 +78,22 @@ export class HUD {
   private fragmentText!: Text;
   private combinedBadge!: Container;
   private pauseOverlay!: Container;
+  private slotsContainer!: Container;
+  private bottomActionBarContainer!: Container;
+  private onSelectSlotCallback?: (slotIndex: number) => void;
+
+  setOnSelectSlot(cb: (slotIndex: number) => void): void {
+    this.onSelectSlotCallback = cb;
+  }
 
   // Damage numbers
   private dmgNumbers: { container: Container; text: Text; life: number; vy: number }[] = [];
 
   // Toast notifications
   private toasts: { container: Container; text: Text; life: number }[] = [];
+
+  // Controls hint text ref (for dynamic update)
+  private hintText!: Text;
 
   constructor(app: Application) {
     this.W = app.screen.width;
@@ -116,6 +143,12 @@ export class HUD {
     this.charNameText.y = 10;
     this.container.addChild(this.charNameText);
 
+    // ── Active Loadout Chips Container ───────────────────────
+    this.slotsContainer = new Container();
+    this.slotsContainer.x = 296;
+    this.slotsContainer.y = 34;
+    this.container.addChild(this.slotsContainer);
+
     // ── Timer ─────────────────────────────────────────────────
     this.timerText = makeText('00:00', 24, 0xffffff, true);
     this.timerText.anchor.set(0.5, 0);
@@ -156,11 +189,15 @@ export class HUD {
     this.container.addChild(this.xpBarFill);
 
     // ── Controls hint ─────────────────────────────────────────
-    const hint = makeText('P=Pausa  F=Frammenti  M=Audio  WASD=Muovi', 11, 0x374151);
-    hint.x = W / 2;
-    hint.anchor.set(0.5, 1);
-    hint.y = H - 10;
-    this.container.addChild(hint);
+    this.hintText = makeText('P=Pausa  F=Frammenti  M=Audio  WASD=Muovi', 11, 0x374151);
+    this.hintText.x = W / 2;
+    this.hintText.anchor.set(0.5, 1);
+    this.hintText.y = H - 10;
+    this.container.addChild(this.hintText);
+
+    // ── Bottom Action Bar (Slot Mosse Shinobi) ───────────────
+    this.bottomActionBarContainer = new Container();
+    this.container.addChild(this.bottomActionBarContainer);
   }
 
   private buildPauseOverlay(): void {
@@ -238,11 +275,144 @@ export class HUD {
     this.ryoText.text = `¥ ${data.ryo}`;
     this.fragmentText.text = `✦ ${data.fragments} frammenti`;
 
+    // Active Jutsu and Tools loadout chips
+    this.slotsContainer.removeChildren();
+    let chipX = 0;
+    if (data.activeJutsu) {
+      data.activeJutsu.forEach(j => {
+        const chip = new Container();
+        chip.x = chipX;
+        const bg = new Graphics();
+        bg.roundRect(0, 0, 48, 20, 5);
+        bg.fill({ color: 0x1E293B, alpha: 0.90 });
+        bg.stroke({ color: 0x38BDF8, width: 1.2 });
+        chip.addChild(bg);
+        const t = makeText(`${j.icon} ${j.level}`, 9.5, 0xE0F2FE, true);
+        t.anchor.set(0.5);
+        t.x = 24; t.y = 10;
+        chip.addChild(t);
+        this.slotsContainer.addChild(chip);
+        chipX += 52;
+      });
+    }
+    if (data.activeTools) {
+      data.activeTools.forEach(t => {
+        const chip = new Container();
+        chip.x = chipX;
+        const bg = new Graphics();
+        bg.roundRect(0, 0, 48, 20, 5);
+        bg.fill({ color: 0x13251A, alpha: 0.90 });
+        bg.stroke({ color: 0x22C55E, width: 1.2 });
+        chip.addChild(bg);
+        const txt = makeText(`${t.icon} ${t.level}`, 9.5, 0xDCFCE7, true);
+        txt.anchor.set(0.5);
+        txt.x = 24; txt.y = 10;
+        chip.addChild(txt);
+        this.slotsContainer.addChild(chip);
+        chipX += 52;
+      });
+    }
+
     // Combined badge
     this.combinedBadge.visible = data.combinedActive;
 
     // Pause overlay
     this.pauseOverlay.visible = data.paused;
+
+    // ── Bottom Action Bar (Mosse in uso & combinazioni) ────
+    this.bottomActionBarContainer.removeChildren();
+    if (data.slots && data.slots.length > 0) {
+      const slotCount = data.slots.length;
+      const slotW = 142;
+      const slotH = 46;
+      const gap = 12;
+      const totalW = slotCount * slotW + (slotCount - 1) * gap;
+      const startX = (this.W - totalW) / 2;
+      const barY = this.H - 68;
+
+      data.slots.forEach((slot, i) => {
+        const slotCont = new Container();
+        slotCont.eventMode = 'static';
+        slotCont.cursor = 'pointer';
+        slotCont.x = startX + i * (slotW + gap);
+        slotCont.y = barY;
+
+        const isAct = slot.isActive;
+        const isMerged = slot.moves.length > 1;
+
+        const bg = new Graphics();
+        bg.roundRect(0, 0, slotW, slotH, 8);
+        bg.fill({ color: isAct ? (isMerged ? 0x2A1A45 : 0x1E293B) : 0x0F172A, alpha: 0.95 });
+        const strokeColor = isAct ? (isMerged ? 0xF59E0B : 0x38BDF8) : (isMerged ? 0xA855F7 : 0x334155);
+        bg.stroke({ color: strokeColor, width: isAct ? 2.4 : 1.2 });
+        slotCont.addChild(bg);
+
+        // Hotkey badge
+        const hotkeyText = data.inputSource === 'gamepad'
+          ? (i === 0 ? 'L1' : (i === 1 ? 'R1' : `[${i + 1}]`))
+          : `[ ${i + 1} ]`;
+        const hotkey = makeText(hotkeyText, 9.5, isAct ? 0xFBBF24 : 0x64748B, true);
+        hotkey.x = 8; hotkey.y = 4;
+        slotCont.addChild(hotkey);
+
+        // Status / Combo tag
+        if (isAct) {
+          const actTag = makeText(isMerged ? '⚡ FUSIONE ATTIVA' : '✔ ATTIVO', 8, 0x34D399, true);
+          actTag.anchor.set(1, 0);
+          actTag.x = slotW - 8; actTag.y = 4;
+          slotCont.addChild(actTag);
+        } else if (isMerged) {
+          const comboTag = makeText(`FUSIONE x${slot.moves.length}`, 8, 0xC084FC, true);
+          comboTag.anchor.set(1, 0);
+          comboTag.x = slotW - 8; comboTag.y = 4;
+          slotCont.addChild(comboTag);
+        }
+
+        // Icons
+        const iconsCont = new Container();
+        iconsCont.x = 8; iconsCont.y = 20;
+        let ix = 0;
+        slot.moves.forEach((move, mi) => {
+          const ic = makeText(move.icon, 16, 0xFFFFFF);
+          ic.x = ix;
+          iconsCont.addChild(ic);
+          ix += 22;
+          if (mi < slot.moves.length - 1) {
+            const plus = makeText('+', 11, 0xFBBF24, true);
+            plus.x = ix - 4; plus.y = 2;
+            iconsCont.addChild(plus);
+            ix += 12;
+          }
+        });
+        slotCont.addChild(iconsCont);
+
+        // Level or Name
+        const labelText = isMerged
+          ? `Combo (${slot.moves.length})`
+          : (slot.moves[0]?.name.length > 12 ? slot.moves[0]?.name.slice(0, 11) + '…' : (slot.moves[0]?.name ?? ''));
+        const lbl = makeText(labelText, 9.5, isAct ? 0xFFFFFF : 0x94A3B8, isAct);
+        lbl.anchor.set(1, 1);
+        lbl.x = slotW - 8; lbl.y = slotH - 4;
+        slotCont.addChild(lbl);
+
+        slotCont.on('pointerdown', () => {
+          if (this.onSelectSlotCallback) {
+            this.onSelectSlotCallback(i);
+          }
+        });
+
+        this.bottomActionBarContainer.addChild(slotCont);
+      });
+    }
+
+    // Controls hint — update dynamically based on input source
+    if (data.inputSource === 'touch') {
+      this.hintText.text = '👆 Tocca lo slot in basso per cambiare mossa  •  Joystick=Muovi';
+    } else if (data.inputSource === 'gamepad') {
+      this.hintText.text = '🎮 L1/R1 = Cambia Mossa  •  L-Stick=Muovi  •  Start=Pausa';
+    } else {
+      this.hintText.text = 'Tasti [1..4] o Click in basso = Cambia Mossa  •  WASD=Muovi  •  P=Pausa';
+    }
 
     // Damage number animation
     this.dmgNumbers = this.dmgNumbers.filter(d => {

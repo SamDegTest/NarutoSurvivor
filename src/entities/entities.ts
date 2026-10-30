@@ -1,12 +1,20 @@
 import { Container, Graphics } from 'pixi.js';
 import { GAME_CONFIG } from '../config/gameConfig';
 import type { Character } from '../types/character';
+import { buildPlayerSprite, buildEnemySprite } from '../rendering/SpriteFactory';
 
 // ============================================================
-//  NarutoSurvivor — Input Manager
+//  NarutoSurvivor — Input Manager (legacy shim)
+//  Kept for backward-compat. GameScene now uses InputHandler.
 // ============================================================
 
-export class InputManager {
+/** Minimal interface satisfied by both InputManager and InputHandler */
+export interface IInputSource {
+  moveX: number;
+  moveY: number;
+}
+
+export class InputManager implements IInputSource {
   readonly keys = new Set<string>();
   mouse = { x: 0, y: 0, down: false };
 
@@ -44,7 +52,7 @@ export class InputManager {
 
 export class Player {
   readonly container: Container;
-  private readonly body: Graphics;
+  private readonly spriteRoot: Container;
   private readonly aura: Graphics;
   private trail: { x: number; y: number; alpha: number }[] = [];
 
@@ -67,36 +75,16 @@ export class Player {
 
     this.container = new Container();
 
-    // Aura glow
+    // Aura glow ring (behind sprite)
     this.aura = new Graphics();
     this.container.addChild(this.aura);
 
-    // Body
-    this.body = new Graphics();
-    this.drawBody();
-    this.container.addChild(this.body);
+    // Pixel-art sprite from SpriteFactory
+    this.spriteRoot = buildPlayerSprite(character);
+    this.container.addChild(this.spriteRoot);
   }
 
-  private drawBody(): void {
-    const r = GAME_CONFIG.PLAYER_HITBOX_RADIUS;
-    const c = this.characterColor;
-
-    // Aura pulse
-    this.aura.clear();
-    this.aura.circle(0, 0, r + 10);
-    this.aura.fill({ color: c, alpha: 0.18 });
-
-    // Main body circle
-    this.body.clear();
-    this.body.circle(0, 0, r);
-    this.body.fill({ color: c });
-
-    // Headband stripe
-    this.body.rect(-r, -4, r * 2, 7);
-    this.body.fill({ color: 0xffffff, alpha: 0.35 });
-  }
-
-  update(dt: number, input: InputManager): void {
+  update(dt: number, input: IInputSource): void {
     const dx = input.moveX;
     const dy = input.moveY;
 
@@ -114,11 +102,16 @@ export class Player {
       // Clamp to world bounds
       this.x = Math.max(32, Math.min(GAME_CONFIG.WORLD_WIDTH  - 32, this.x));
       this.y = Math.max(32, Math.min(GAME_CONFIG.WORLD_HEIGHT - 32, this.y));
+
+      // Flip sprite horizontally based on movement direction
+      if (this.spriteRoot) this.spriteRoot.scale.x = nx < 0 ? -1 : 1;
     }
 
-    // Pulse aura
+    // Pulse aura glow
     const pulse = 1 + Math.sin(Date.now() / 400) * 0.12;
-    this.aura.scale.set(pulse);
+    this.aura.clear();
+    this.aura.circle(0, 0, GAME_CONFIG.PLAYER_HITBOX_RADIUS + 12);
+    this.aura.fill({ color: this.characterColor, alpha: 0.14 * pulse });
 
     this.container.x = this.x;
     this.container.y = this.y;
@@ -192,15 +185,8 @@ export class Enemy {
 
     this.container = new Container();
 
-    this.body = new Graphics();
-    this.body.roundRect(-config.size, -config.size, config.size * 2, config.size * 2, 4);
-    this.body.fill({ color: config.color });
-
-    // Eye detail
-    this.body.circle(-5, -3, 3);
-    this.body.circle( 5, -3, 3);
-    this.body.fill({ color: 0xffffff, alpha: 0.8 });
-
+    // Pixel-art sprite from SpriteFactory
+    this.body = buildEnemySprite(config);
     this.container.addChild(this.body);
     this.container.x = x;
     this.container.y = y;
@@ -244,41 +230,104 @@ export class Collectible {
 
   x: number;
   y: number;
+  vx = 0;
+  vy = 0;
   type: CollectibleType;
   value: number;
   collected = false;
+  isMagnetized = false;
+  private magnetSpeed = 320;
   private age = 0;
 
-  constructor(x: number, y: number, type: CollectibleType, value: number) {
+  constructor(x: number, y: number, type: CollectibleType, value: number, initVx = 0, initVy = 0) {
     this.x = x;
     this.y = y;
+    this.vx = initVx;
+    this.vy = initVy;
     this.type = type;
     this.value = value;
 
     this.container = new Container();
     this.body = new Graphics();
 
-    const color = type === 'chakra_orb' ? GAME_CONFIG.COLORS.CHAKRA_ORB : GAME_CONFIG.COLORS.RYO_COIN;
-    const size  = type === 'chakra_orb' ? 7 : 5;
+    if (type === 'chakra_orb') {
+      const isLarge = value >= 35;
+      const isMedium = value >= 15;
+      const size = isLarge ? 10 : (isMedium ? 8 : 6);
+      const color = isLarge ? 0xFBBF24 : (isMedium ? 0x22D3EE : 0x38BDF8);
 
-    this.body.circle(0, 0, size);
-    this.body.fill({ color });
+      // Outer glow ring
+      this.body.circle(0, 0, size + 4);
+      this.body.fill({ color, alpha: 0.35 });
 
-    // Inner shine
-    this.body.circle(-2, -2, size * 0.35);
-    this.body.fill({ color: 0xffffff, alpha: 0.6 });
+      // Core sphere
+      this.body.circle(0, 0, size);
+      this.body.fill({ color });
+
+      // Specular highlight
+      this.body.circle(-size * 0.3, -size * 0.3, size * 0.4);
+      this.body.fill({ color: 0xffffff, alpha: 0.85 });
+    } else {
+      // Ryo Gold Coin
+      this.body.circle(0, 0, 7);
+      this.body.fill({ color: 0xD97706 });
+      this.body.circle(0, 0, 5.5);
+      this.body.fill({ color: 0xFBBF24 });
+      this.body.rect(-1.5, -1.5, 3, 3);
+      this.body.fill({ color: 0x78350F }); // classic square center
+    }
 
     this.container.addChild(this.body);
     this.container.x = x;
     this.container.y = y;
   }
 
-  update(dt: number): void {
+  /**
+   * Updates position.
+   * If magnetized to player, accelerates towards player.
+   * Returns true when close enough to be absorbed.
+   */
+  update(dt: number, targetX?: number, targetY?: number): boolean {
     this.age += dt;
-    // Floating bob
-    this.container.y = this.y + Math.sin(this.age * 3.0) * 2.5;
-    // Pulse
-    const p = 1 + Math.sin(this.age * 5) * 0.08;
+
+    // Phase 1: Physical scatter explosion decay
+    if (Math.abs(this.vx) > 1 || Math.abs(this.vy) > 1) {
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      this.vx *= Math.pow(0.08, dt);
+      this.vy *= Math.pow(0.08, dt);
+      this.container.x = this.x;
+      this.container.y = this.y;
+    }
+
+    // Phase 2: Magnetic pull towards player
+    if (this.isMagnetized && targetX !== undefined && targetY !== undefined) {
+      const dx = targetX - this.x;
+      const dy = targetY - this.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < 18) {
+        return true; // Reached target, absorb!
+      }
+
+      this.magnetSpeed += dt * 1500;
+      this.x += (dx / dist) * this.magnetSpeed * dt;
+      this.y += (dy / dist) * this.magnetSpeed * dt;
+      this.container.x = this.x;
+      this.container.y = this.y;
+
+      // Suction scaling effect
+      const s = Math.min(1.2, Math.max(0.4, dist / 60));
+      this.container.scale.set(s);
+      return false;
+    }
+
+    // Phase 3: Idle floating bob
+    this.container.y = this.y + Math.sin(this.age * 3.5) * 2.5;
+    const p = 1 + Math.sin(this.age * 5.0) * 0.08;
     this.body.scale.set(p);
+
+    return false;
   }
 }
+
