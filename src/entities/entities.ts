@@ -65,8 +65,8 @@ export class Player {
   characterColor: number;
 
   constructor(character: Character) {
-    this.x = GAME_CONFIG.WORLD_WIDTH / 2;
-    this.y = GAME_CONFIG.WORLD_HEIGHT / 2;
+    this.x = 0;
+    this.y = 0;
     this.speed         = character.baseStats.movespeed;
     this.hp            = character.baseStats.hp;
     this.maxHp         = character.baseStats.hp;
@@ -99,9 +99,7 @@ export class Player {
       this.x += nx * this.speed * dt;
       this.y += ny * this.speed * dt;
 
-      // Clamp to world bounds
-      this.x = Math.max(32, Math.min(GAME_CONFIG.WORLD_WIDTH  - 32, this.x));
-      this.y = Math.max(32, Math.min(GAME_CONFIG.WORLD_HEIGHT - 32, this.y));
+      // Infinite world: free movement without border clamping
 
       // Flip sprite horizontally based on movement direction
       if (this.spriteRoot) this.spriteRoot.scale.x = nx < 0 ? -1 : 1;
@@ -135,8 +133,10 @@ export class Player {
 //  Enemy Entity
 // ============================================================
 
+export type EnemyType = 'zetsu' | 'traitor_ninja' | 'anbu_corrupt' | 'summon';
+
 export interface EnemyConfig {
-  type: 'zetsu' | 'traitor_ninja' | 'summon';
+  type: EnemyType;
   hp: number;
   speed: number;
   damage: number;
@@ -144,26 +144,33 @@ export interface EnemyConfig {
   size: number;
   expValue: number;
   ryoValue: number;
+  isElite?: boolean;
 }
 
-export const ENEMY_TEMPLATES: Record<string, EnemyConfig> = {
+export const ENEMY_TEMPLATES: Record<EnemyType, EnemyConfig> = {
   zetsu: {
-    type: 'zetsu', hp: 80, speed: 65, damage: 10,
-    color: 0x2D6A4F, size: 14, expValue: 8, ryoValue: 3,
+    type: 'zetsu', hp: 70, speed: 56, damage: 10,
+    color: 0x2D6A4F, size: 14, expValue: 12, ryoValue: 3,
   },
   traitor_ninja: {
-    type: 'traitor_ninja', hp: 180, speed: 55, damage: 22,
-    color: 0x6B21A8, size: 16, expValue: 18, ryoValue: 7,
+    type: 'traitor_ninja', hp: 150, speed: 64, damage: 18,
+    color: 0x6B21A8, size: 16, expValue: 24, ryoValue: 8,
+  },
+  anbu_corrupt: {
+    type: 'anbu_corrupt', hp: 240, speed: 76, damage: 26,
+    color: 0x475569, size: 17, expValue: 38, ryoValue: 14,
   },
   summon: {
-    type: 'summon', hp: 350, speed: 40, damage: 35,
-    color: 0x991B1B, size: 22, expValue: 35, ryoValue: 15,
+    type: 'summon', hp: 420, speed: 44, damage: 42,
+    color: 0x991B1B, size: 24, expValue: 60, ryoValue: 24,
   },
 };
 
 export class Enemy {
   readonly container: Container;
   private readonly body: Graphics;
+  private readonly eliteAura?: Graphics;
+  private auraTimer = 0;
 
   id: number;
   x: number;
@@ -185,6 +192,12 @@ export class Enemy {
 
     this.container = new Container();
 
+    // Elite visual aura (behind sprite)
+    if (config.isElite) {
+      this.eliteAura = new Graphics();
+      this.container.addChild(this.eliteAura);
+    }
+
     // Pixel-art sprite from SpriteFactory
     this.body = buildEnemySprite(config);
     this.container.addChild(this.body);
@@ -202,6 +215,16 @@ export class Enemy {
     }
     this.container.x = this.x;
     this.container.y = this.y;
+
+    // Pulse elite aura
+    if (this.eliteAura) {
+      this.auraTimer += dt * 4;
+      const pulse = 1 + Math.sin(this.auraTimer) * 0.18;
+      this.eliteAura.clear();
+      this.eliteAura.circle(0, 0, (this.config.size + 6) * pulse);
+      this.eliteAura.fill({ color: 0xFBBF24, alpha: 0.22 });
+      this.eliteAura.stroke({ color: 0xF59E0B, width: 2, alpha: 0.85 });
+    }
   }
 
   takeDamage(amount: number): void {
@@ -222,7 +245,7 @@ export class Enemy {
 //  Collectible (Chakra Orb / Ryo Coin)
 // ============================================================
 
-export type CollectibleType = 'chakra_orb' | 'ryo_coin';
+export type CollectibleType = 'chakra_orb' | 'ryo_coin' | 'bomb' | 'magnet' | 'ramen';
 
 export class Collectible {
   readonly container: Container;
@@ -267,7 +290,7 @@ export class Collectible {
       // Specular highlight
       this.body.circle(-size * 0.3, -size * 0.3, size * 0.4);
       this.body.fill({ color: 0xffffff, alpha: 0.85 });
-    } else {
+    } else if (type === 'ryo_coin') {
       // Ryo Gold Coin
       this.body.circle(0, 0, 7);
       this.body.fill({ color: 0xD97706 });
@@ -275,6 +298,88 @@ export class Collectible {
       this.body.fill({ color: 0xFBBF24 });
       this.body.rect(-1.5, -1.5, 3, 3);
       this.body.fill({ color: 0x78350F }); // classic square center
+    } else if (type === 'bomb') {
+      // Kibaku Fuda (Carta Bomba Ninja)
+      // Pulsing red explosive aura
+      this.body.circle(0, 0, 15);
+      this.body.fill({ color: 0xEF4444, alpha: 0.28 });
+
+      // Parchment paper tag
+      this.body.roundRect(-8, -12, 16, 24, 2);
+      this.body.fill({ color: 0xFEF3C7 });
+      this.body.stroke({ color: 0xDC2626, width: 1.5 });
+
+      // Explosive kanji / seal (Bakuretsu)
+      this.body.rect(-1, -7, 2, 14);
+      this.body.fill({ color: 0x991B1B });
+      this.body.rect(-5, -3, 10, 2);
+      this.body.fill({ color: 0x991B1B });
+      this.body.rect(-6, 2, 12, 2);
+      this.body.fill({ color: 0x991B1B });
+      this.body.circle(-4, -6, 1.2);
+      this.body.fill({ color: 0x991B1B });
+      this.body.circle(4, -6, 1.2);
+      this.body.fill({ color: 0x991B1B });
+
+      // Spark fuse on top
+      this.body.circle(0, -13, 2.5);
+      this.body.fill({ color: 0xFBBF24 });
+    } else if (type === 'magnet') {
+      // Calamita di Chakra (Chakra Magnet)
+      // Pulsing magnetic field glow
+      this.body.circle(0, 0, 16);
+      this.body.fill({ color: 0x38BDF8, alpha: 0.30 });
+
+      // U-shape magnet legs
+      this.body.roundRect(-9, -8, 6, 16, 2);
+      this.body.fill({ color: 0xEF4444 }); // red North pole
+      this.body.roundRect(3, -8, 6, 16, 2);
+      this.body.fill({ color: 0x3B82F6 }); // blue South pole
+      this.body.roundRect(-9, 3, 18, 6, 3);
+      this.body.fill({ color: 0x334155 }); // metal bridge
+
+      // Silver pole tips
+      this.body.rect(-9, -8, 6, 4);
+      this.body.fill({ color: 0xE2E8F0 });
+      this.body.rect(3, -8, 6, 4);
+      this.body.fill({ color: 0xE2E8F0 });
+
+      // Electric spark between tips
+      this.body.moveTo(-3, -6);
+      this.body.lineTo(0, -4);
+      this.body.lineTo(3, -6);
+      this.body.stroke({ color: 0xFBBF24, width: 1.5 });
+    } else if (type === 'ramen') {
+      // Ciotola fumante di Ramen di Ichiraku
+      // Soft green healing vitality aura
+      this.body.circle(0, 0, 16);
+      this.body.fill({ color: 0x22C55E, alpha: 0.32 });
+
+      // Red ceramic bowl
+      this.body.roundRect(-10, -2, 20, 13, 4);
+      this.body.fill({ color: 0xDC2626 });
+      this.body.stroke({ color: 0x991B1B, width: 1.2 });
+      this.body.rect(-5, 10, 10, 2);
+      this.body.fill({ color: 0x1E293B }); // foot
+
+      // Golden miso broth
+      this.body.ellipse(0, -2, 9, 3.5);
+      this.body.fill({ color: 0xD97706 });
+
+      // Narutomaki (pink spiral fishcake)
+      this.body.circle(-3, -2.5, 3);
+      this.body.fill({ color: 0xffffff });
+      this.body.circle(-3, -2.5, 1.4);
+      this.body.stroke({ color: 0xF43F5E, width: 1.2 });
+
+      // Green nori sheet
+      this.body.rect(2, -4.5, 4, 3);
+      this.body.fill({ color: 0x166534 });
+
+      // Wooden chopsticks
+      this.body.moveTo(1, -2);
+      this.body.lineTo(8, -10);
+      this.body.stroke({ color: 0x78350F, width: 1.5 });
     }
 
     this.container.addChild(this.body);
@@ -306,11 +411,12 @@ export class Collectible {
       const dy = targetY - this.y;
       const dist = Math.hypot(dx, dy);
 
-      if (dist < 18) {
-        return true; // Reached target, absorb!
+      const step = this.magnetSpeed * dt;
+      if (dist <= step + 14 || dist < 32) {
+        return true; // Reached target, absorb reliably!
       }
 
-      this.magnetSpeed += dt * 1500;
+      this.magnetSpeed += dt * 1800;
       this.x += (dx / dist) * this.magnetSpeed * dt;
       this.y += (dy / dist) * this.magnetSpeed * dt;
       this.container.x = this.x;

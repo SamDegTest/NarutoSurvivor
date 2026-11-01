@@ -4,6 +4,7 @@ import {
   Player, Enemy, Collectible,
   ENEMY_TEMPLATES,
   type EnemyConfig,
+  type EnemyType,
 } from '../entities/entities';
 import {
   Boss, BOSS_CONFIGS, BOSS_SCHEDULE,
@@ -28,8 +29,8 @@ import { SaveSystem } from '../systems/saveSystem';
 import { InputHandler } from '../controls/InputHandler';
 import { VirtualJoystick } from '../controls/VirtualJoystick';
 import { GameOverScene } from './GameOverScene';
-import { buildTilemap, randomBiome, BIOME_NAMES, type Biome } from '../rendering/TilemapRenderer';
 import { ParticleSystem } from '../rendering/ParticleSystem';
+import { InfiniteTilemap, randomBiome, BIOME_NAMES, type Biome } from '../rendering/TilemapRenderer';
 import {
   CANONICAL_JUTSU_CATALOG,
   getAvailableJutsuForCharacter,
@@ -37,6 +38,7 @@ import {
   type ActiveJutsuInstance,
 } from '../data/jutsuCatalog';
 import { JutsuFusionModal, type CombatJutsuSlot } from '../ui/JutsuFusionModal';
+import { difficultyManager } from '../systems/difficultyManager';
 import type { Character } from '../types/character';
 import type { StarRank } from '../types/character';
 
@@ -50,8 +52,8 @@ export interface PlayerSession {
   fragments: number;
 }
 
-// XP thresholds per level (index = level)
-const XP_PER_LEVEL = [0, 50, 120, 240, 400, 620, 900, 1250, 1700, 2300, 9999];
+// XP thresholds per level (index = level) — calibrated for fast early upgrades and smooth curve
+const XP_PER_LEVEL = [0, 25, 65, 130, 220, 340, 500, 720, 1000, 1350, 1800, 2350, 3000, 3800, 4800, 6000, 7500, 99999];
 
 export class GameScene {
   private readonly app: Application;
@@ -64,6 +66,7 @@ export class GameScene {
   private virtualJoystick?: VirtualJoystick;
   private particleSystem!: ParticleSystem;
   private currentBiome!: Biome;
+  private infiniteTilemap!: InfiniteTilemap;
   private player!: Player;
   private enemies: Enemy[] = [];
   private bosses: Boss[] = [];
@@ -101,8 +104,6 @@ export class GameScene {
 
   // ── Spawn ─────────────────────────────────────────────────
   private spawnTimer = 0;
-  private readonly spawnInterval = GAME_CONFIG.ENEMY_SPAWN_INTERVAL_MS / 1000;
-  private enemyBudget: number = GAME_CONFIG.ENEMY_INITIAL_COUNT;
 
   // ── Boss tracking ─────────────────────────────────────────
   private bossMinutesSpawned = new Set<number>();
@@ -174,9 +175,10 @@ export class GameScene {
       this.paused = !this.paused;
     };
 
-    // ── Biome & Ground Tilemap ──────────────────────────────
+    // ── Biome & Ground Infinite Tilemap ───────────────────────
     this.currentBiome = randomBiome();
-    buildTilemap(this.currentBiome, GAME_CONFIG.WORLD_WIDTH, GAME_CONFIG.WORLD_HEIGHT, this.groundLayer);
+    this.infiniteTilemap = new InfiniteTilemap(this.currentBiome, this.groundLayer);
+    this.infiniteTilemap.update(0, 0, true);
     this.particleSystem = new ParticleSystem(this.entityLayer);
 
     // ── Player stats ─────────────────────────────────────────
@@ -265,6 +267,7 @@ export class GameScene {
       {
         id: 'slot_0',
         name: initialDef.nameIT,
+        slotCooldownTimer: 0,
         moves: [
           {
             definition: initialDef,
@@ -320,8 +323,9 @@ export class GameScene {
     // ── Keybindings ───────────────────────────────────────────
     this.setupKeybindings();
 
-    // ── Initial wave ──────────────────────────────────────────
-    this.spawnWave(this.enemyBudget);
+    // ── Initial wave (Easy tutorial start: 3 basic Zetsu) ─────
+    difficultyManager.reset();
+    this.spawnWave(3, 'zetsu');
 
     // ── Game Loop ─────────────────────────────────────────────
     this.app.ticker.add(this.tick, this);
@@ -330,6 +334,7 @@ export class GameScene {
   stop(): void {
     this.app.ticker.remove(this.tick, this);
     audioManager.stopBGM();
+    this.infiniteTilemap?.clear();
     this.entityLayer.removeChildren();
     this.groundLayer.removeChildren();
     this.uiLayer.removeChildren();
@@ -418,19 +423,31 @@ export class GameScene {
     this.world.x += (targetX - this.world.x) * GAME_CONFIG.CAMERA_LERP;
     this.world.y += (targetY - this.world.y) * GAME_CONFIG.CAMERA_LERP;
 
-    // ── Active Slot Jutsu Cooldowns & Fire ────────────────────
+    // ── Dynamic Infinite Tilemap Chunks ───────────────────────
+    this.infiniteTilemap.update(this.player.x, this.player.y);
+
+    // ── Active Slot Jutsu: Simultaneous Cooldown & Fire ───────
     const curSlot = this.combatSlots[this.activeSlotIndex];
-    if (curSlot) {
-      for (const aj of curSlot.moves) {
-        aj.cooldownTimer -= dt;
-        if (aj.cooldownTimer <= 0) {
+    if (curSlot && curSlot.moves.length > 0) {
+      if (curSlot.slotCooldownTimer === undefined) {
+        curSlot.slotCooldownTimer = 0;
+      }
+      curSlot.slotCooldownTimer -= dt;
+      if (curSlot.slotCooldownTimer <= 0) {
+        // Fire ALL merged techniques in this slot simultaneously!
+        for (const aj of curSlot.moves) {
           this.fireSpecificJutsu(aj);
-          const cdReduction = Math.pow(0.90, aj.level - 1);
-          aj.cooldownTimer = Math.max(
-            0.35,
-            aj.definition.cooldownSec * cdReduction * this.upgStats.jutsuCooldownMult,
-          );
         }
+        // Slot cooldown determined by minimum cooldown of moves + fusion bonus
+        const minCd = Math.min(...curSlot.moves.map(m => {
+          const cdRed = Math.pow(0.90, m.level - 1);
+          return m.definition.cooldownSec * cdRed;
+        }));
+        const fusionSpeedMult = Math.pow(0.90, curSlot.moves.length - 1);
+        curSlot.slotCooldownTimer = Math.max(
+          0.30,
+          minCd * fusionSpeedMult * this.upgStats.jutsuCooldownMult,
+        );
       }
     }
 
@@ -503,6 +520,13 @@ export class GameScene {
     this.collectibles = this.collectibles.filter(c => {
       if (c.collected) return false;
       const dist = Math.hypot(c.x - this.player.x, c.y - this.player.y);
+      // Instant physical pickup if player collides with item
+      if (dist <= GAME_CONFIG.PLAYER_HITBOX_RADIUS + 16) {
+        this.collectItem(c);
+        c.collected = true;
+        this.entityLayer.removeChild(c.container);
+        return false;
+      }
       if (dist < this.upgStats.collectradius) {
         c.isMagnetized = true;
       }
@@ -516,16 +540,30 @@ export class GameScene {
       return true;
     });
 
-    // ── Enemy Spawning ────────────────────────────────────────
+    // ── Dynamic Difficulty & Enemy Spawning ────────────────────
+    const diff = difficultyManager.getSnapshot(this.elapsedSec);
+
+    // Announce threat tier changes
+    if (diff.tierChanged && this.elapsedSec > 5) {
+      this.hud.showToast(`⚡ ALLERTA: ${diff.threatTier.nameIT}!`);
+      audioManager.playSFX('promotion');
+    }
+
+    // Periodic invasion surge event
+    if (difficultyManager.checkSurge(this.elapsedSec)) {
+      this.triggerSurgeEvent();
+    }
+
+    // Regular wave spawn
     this.spawnTimer += dt;
-    if (this.spawnTimer >= this.spawnInterval) {
+    if (this.spawnTimer >= diff.spawnIntervalSec) {
       this.spawnTimer = 0;
-      const toSpawn = Math.ceil(this.enemyBudget * 0.40);
-      this.spawnWave(toSpawn);
-      this.enemyBudget = Math.ceil(
-        GAME_CONFIG.ENEMY_INITIAL_COUNT *
-        Math.pow(GAME_CONFIG.ENEMY_SPAWN_SCALE, this.elapsedSec / 60),
-      );
+      const activeCount = this.enemies.filter(e => !e.isDead).length;
+      const deficit = diff.enemyBudget - activeCount;
+      if (deficit > 0) {
+        const batchSize = Math.min(8, Math.max(1, Math.ceil(deficit * 0.40)));
+        this.spawnWave(batchSize);
+      }
     }
 
     // ── Boss Scheduling ───────────────────────────────────────
@@ -598,6 +636,7 @@ export class GameScene {
     // Merge moves from B into A
     slotA.moves.push(...slotB.moves);
     slotA.name = slotA.moves.map(m => m.definition.nameIT).join(' + ');
+    slotA.slotCooldownTimer = 0; // Fire all fused techniques together immediately!
 
     // Remove slot B
     this.combatSlots.splice(slotBIdx, 1);
@@ -844,6 +883,12 @@ export class GameScene {
       this.collectibles.push(ryo);
       this.entityLayer.addChild(ryo.container);
     }
+    // Guaranteed Special items from Boss: Delicious Ichiraku Ramen & Chakra Magnet
+    const ramen = new Collectible(boss.x + 35, boss.y - 15, 'ramen', 1, 60, -60);
+    const magnet = new Collectible(boss.x - 35, boss.y - 15, 'magnet', 1, -60, -60);
+    this.collectibles.push(ramen, magnet);
+    this.entityLayer.addChild(ramen.container, magnet.container);
+
     // Fragment & Scroll drop
     this.currentFragments += boss.config.fragments;
     SaveSystem.addScrolls(1);
@@ -866,7 +911,9 @@ export class GameScene {
   // ── Drops & Collection ───────────────────────────────────────
 
   private spawnDrops(x: number, y: number, config: EnemyConfig): void {
-    const orbCount = Math.ceil(config.expValue / 8);
+    const isElite = config.isElite ?? false;
+    const orbDivisor = isElite ? 6 : 8;
+    const orbCount = Math.max(1, Math.ceil(config.expValue / orbDivisor));
     for (let i = 0; i < orbCount; i++) {
       const ivx = (Math.random() - 0.5) * 160;
       const ivy = (Math.random() - 0.5) * 160;
@@ -878,7 +925,7 @@ export class GameScene {
       this.collectibles.push(orb);
       this.entityLayer.addChild(orb.container);
     }
-    if (Math.random() < GAME_CONFIG.RYO_DROP_CHANCE) {
+    if (isElite || Math.random() < GAME_CONFIG.RYO_DROP_CHANCE) {
       const ivx = (Math.random() - 0.5) * 120;
       const ivy = (Math.random() - 0.5) * 120;
       const ryo = new Collectible(
@@ -889,9 +936,31 @@ export class GameScene {
       this.collectibles.push(ryo);
       this.entityLayer.addChild(ryo.container);
     }
-    // Rare fragment drop (2% chance)
-    if (Math.random() < 0.02) {
+    // Special drops: Bomba, Magnete, Ramen di Ichiraku
+    // ~3.5% chance from normal mobs, 22% chance from elite mobs
+    const specialDropChance = isElite ? 0.22 : 0.035;
+    if (Math.random() < specialDropChance) {
+      const roll = Math.random();
+      let specialType: 'bomb' | 'magnet' | 'ramen' = 'ramen';
+      if (roll < 0.40) {
+        specialType = 'ramen';
+      } else if (roll < 0.72) {
+        specialType = 'magnet';
+      } else {
+        specialType = 'bomb';
+      }
+
+      const ivx = (Math.random() - 0.5) * 140;
+      const ivy = (Math.random() - 0.5) * 140;
+      const special = new Collectible(x, y, specialType, 1, ivx, ivy);
+      this.collectibles.push(special);
+      this.entityLayer.addChild(special.container);
+    }
+
+    // Rare fragment drop (25% for elite, 2% for normal)
+    if (Math.random() < (isElite ? 0.25 : 0.02)) {
       this.currentFragments += 1;
+      this.hud.showToast('✦ +1 Frammento Ninja!');
     }
   }
 
@@ -902,11 +971,79 @@ export class GameScene {
       this.particleSystem.emitChakraCollect(c.x, c.y, c.value);
       audioManager.playSFX('collect_orb');
       this.checkLevelUp();
-    } else {
+    } else if (c.type === 'ryo_coin') {
       this.ryo += c.value;
       audioManager.playSFX('collect_ryo');
       this.particleSystem.emitRyoCollect(c.x, c.y);
+    } else if (c.type === 'bomb') {
+      this.triggerBombExplosion(c.x, c.y);
+    } else if (c.type === 'magnet') {
+      this.triggerMagnetVacuum();
+    } else if (c.type === 'ramen') {
+      this.triggerRamenHeal();
     }
+  }
+
+  private triggerBombExplosion(originX: number, originY: number): void {
+    audioManager.playSFX('bomb_explode');
+    this.particleSystem.emitBombExplosion(originX, originY);
+    this.hud.showToast('💥 CARTA BOMBA! Esplosione devastante!');
+
+    // Eliminate all active normal enemies on map with explosion VFX and drops
+    const enemiesToKill = [...this.enemies];
+    for (const enemy of enemiesToKill) {
+      if (enemy.isDead) continue;
+      this.particleSystem.emitEnemyDeath(enemy.x, enemy.y, 0xEF4444);
+      this.particleSystem.emitNinjaSmoke(enemy.x, enemy.y);
+      this.spawnDrops(enemy.x, enemy.y, enemy.config);
+      enemy.isDead = true;
+      this.totalKills++;
+    }
+
+    // Heavy direct blast damage to all active bosses (600 dmg)
+    for (const boss of this.bosses) {
+      if (boss.isDead) continue;
+      this.onEnemyHit(boss, 600);
+      this.particleSystem.emitBombExplosion(boss.x, boss.y);
+    }
+
+    // Screen flash blast wave
+    const flash = new Graphics();
+    flash.rect(0, 0, GAME_CONFIG.WIDTH, GAME_CONFIG.HEIGHT);
+    flash.fill({ color: 0xFFEDD5, alpha: 0.60 });
+    this.uiLayer.addChild(flash);
+    setTimeout(() => {
+      if (flash.parent) flash.parent.removeChild(flash);
+    }, 120);
+  }
+
+  private triggerMagnetVacuum(): void {
+    audioManager.playSFX('magnet_pickup');
+    this.particleSystem.emitMagnetPulse(this.player.x, this.player.y);
+    this.hud.showToast('🧲 SIGILLO MAGNETICO! Tutti gli orbi attratti!');
+
+    for (const item of this.collectibles) {
+      if (!item.collected) {
+        item.isMagnetized = true;
+      }
+    }
+  }
+
+  private triggerRamenHeal(): void {
+    audioManager.playSFX('ramen_heal');
+    this.particleSystem.emitHealing(this.player.x, this.player.y);
+
+    // Heals 50% of max HP
+    const healAmount = Math.max(50, Math.round(this.upgStats.maxHp * 0.50));
+    const oldHp = this.upgStats.hp;
+    this.upgStats.hp = Math.min(this.upgStats.maxHp, this.upgStats.hp + healAmount);
+    this.player.hp = this.upgStats.hp;
+    const actualHealed = this.upgStats.hp - oldHp;
+
+    const screenX = this.player.x + this.world.x;
+    const screenY = this.player.y + this.world.y - 30;
+    this.hud.showHealNumber(screenX, screenY, actualHealed > 0 ? actualHealed : healAmount);
+    this.hud.showToast(`🍜 RAMEN DI ICHIRAKU! +${actualHealed > 0 ? actualHealed : healAmount} HP!`);
   }
 
   private checkLevelUp(): void {
@@ -1004,6 +1141,7 @@ export class GameScene {
               id: `slot_${this.combatSlots.length}`,
               name: nextJutsuDef.nameIT,
               moves: [newInst],
+              slotCooldownTimer: 0.2,
             });
             if (nextJutsuDef.behavior === 'Orbital') {
               const orbDmg = Math.round(this.upgStats.jutsudmg * nextJutsuDef.baseDmgCoeff * 10);
@@ -1165,25 +1303,69 @@ export class GameScene {
 
   // ── Spawning ──────────────────────────────────────────────────
 
-  private spawnWave(count: number): void {
-    const TYPES = Object.values(ENEMY_TEMPLATES);
-    const minute = Math.floor(this.elapsedSec / 60);
-    for (let i = 0; i < count; i++) {
+  private spawnWave(count: number, forceType?: EnemyType, forceElite = false): void {
+    const diff = difficultyManager.getSnapshot(this.elapsedSec);
+    const activeCount = this.enemies.filter(e => !e.isDead).length;
+    if (activeCount >= diff.enemyBudget && !forceElite) return;
+
+    const actualCount = Math.min(count, Math.max(1, diff.enemyBudget - activeCount));
+
+    for (let i = 0; i < actualCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const dist  = GAME_CONFIG.ENEMY_SPAWN_RADIUS_MIN +
         Math.random() * (GAME_CONFIG.ENEMY_SPAWN_RADIUS_MAX - GAME_CONFIG.ENEMY_SPAWN_RADIUS_MIN);
       const ex = this.player.x + Math.cos(angle) * dist;
       const ey = this.player.y + Math.sin(angle) * dist;
 
-      let typeIdx = 0;
-      if (minute >= 3 && Math.random() < 0.35) typeIdx = 1;
-      if (minute >= 6 && Math.random() < 0.25) typeIdx = 2;
+      const enemyType = forceType ?? difficultyManager.pickEnemyType(this.elapsedSec);
+      const template = ENEMY_TEMPLATES[enemyType];
+      const isElite = forceElite || Math.random() < diff.eliteChance;
 
-      const template = TYPES[typeIdx];
+      const eliteHpBonus  = isElite ? 2.2 : 1.0;
+      const eliteDmgBonus = isElite ? 1.35 : 1.0;
+      const eliteSpdBonus = isElite ? 1.15 : 1.0;
+      const eliteExpBonus = isElite ? 3.0 : 1.0;
+
       const scaledConfig: EnemyConfig = {
         ...template,
-        hp:     Math.round(template.hp     * (1 + minute * 0.15)),
-        damage: Math.round(template.damage * (1 + minute * 0.10)),
+        hp:       Math.max(25, Math.round(template.hp * diff.hpMultiplier * eliteHpBonus)),
+        speed:    Math.round(template.speed * diff.speedMultiplier * eliteSpdBonus),
+        damage:   Math.max(3, Math.round(template.damage * diff.damageMultiplier * eliteDmgBonus)),
+        expValue: Math.round(template.expValue * diff.expMultiplier * eliteExpBonus),
+        ryoValue: Math.round(template.ryoValue * (isElite ? 2.5 : 1.0)),
+        isElite,
+      };
+
+      const enemy = new Enemy(ex, ey, scaledConfig);
+      this.enemies.push(enemy);
+      this.entityLayer.addChild(enemy.container);
+    }
+  }
+
+  private triggerSurgeEvent(): void {
+    const diff = difficultyManager.getSnapshot(this.elapsedSec);
+    this.hud.showToast(`⚡ ONDA D'INVASIONE IN ARRIVO!`);
+    audioManager.playSFX('boss_spawn');
+
+    const count = Math.min(14, 6 + Math.floor(diff.minute * 2));
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const dist  = GAME_CONFIG.ENEMY_SPAWN_RADIUS_MIN + 30;
+      const ex = this.player.x + Math.cos(angle) * dist;
+      const ey = this.player.y + Math.sin(angle) * dist;
+
+      const enemyType = difficultyManager.pickEnemyType(this.elapsedSec);
+      const template = ENEMY_TEMPLATES[enemyType];
+      const isElite = i === 0 && diff.minute >= 2.0;
+
+      const scaledConfig: EnemyConfig = {
+        ...template,
+        hp:       Math.round(template.hp * diff.hpMultiplier * (isElite ? 2.2 : 1.0)),
+        speed:    Math.round(template.speed * diff.speedMultiplier * (isElite ? 1.15 : 1.08)),
+        damage:   Math.round(template.damage * diff.damageMultiplier),
+        expValue: Math.round(template.expValue * (isElite ? 3.0 : 1.2)),
+        ryoValue: Math.round(template.ryoValue * (isElite ? 2.5 : 1.0)),
+        isElite,
       };
 
       const enemy = new Enemy(ex, ey, scaledConfig);
@@ -1207,6 +1389,7 @@ export class GameScene {
 
   private updateHUD(): void {
     const xpToNext = XP_PER_LEVEL[Math.min(this.level, XP_PER_LEVEL.length - 1)] ?? 9999;
+    const diff = difficultyManager.getSnapshot(this.elapsedSec);
     this.hud.update({
       hp:            this.upgStats.hp,
       maxHp:         this.upgStats.maxHp,
@@ -1223,6 +1406,8 @@ export class GameScene {
       paused:        this.paused,
       combinedActive: this.combinedActive,
       inputSource:   this.input.lastSource,
+      threatBadge:   diff.threatTier.badgeText,
+      threatColor:   diff.threatTier.color,
       slots:         this.combatSlots.map((s, i) => ({
         id: s.id,
         moves: s.moves.map(m => ({

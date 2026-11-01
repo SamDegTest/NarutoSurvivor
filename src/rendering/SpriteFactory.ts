@@ -218,10 +218,11 @@ export function buildEnemySprite(config: EnemyConfig): Graphics {
   const g = new Graphics();
 
   switch (config.type) {
-    case 'zetsu':    drawZetsu(g, config.size, config.color);    break;
+    case 'zetsu':        drawZetsu(g, config.size, config.color);        break;
     case 'traitor_ninja': drawTraitorNinja(g, config.size, config.color); break;
-    case 'summon':   drawSummon(g, config.size, config.color);   break;
-    default:         drawGenericEnemy(g, config.size, config.color);
+    case 'anbu_corrupt':  drawAnbuCorrupt(g, config.size, config.color);  break;
+    case 'summon':       drawSummon(g, config.size, config.color);       break;
+    default:             drawGenericEnemy(g, config.size, config.color);
   }
 
   return g;
@@ -285,6 +286,43 @@ function drawTraitorNinja(g: Graphics, size: number, color: number): void {
   // Red slit eyes behind mask
   g.rect(-s * 0.3, -s * 0.78, s * 0.18, s * 0.12); g.fill({ color: 0xEF4444 });
   g.rect( s * 0.12, -s * 0.78, s * 0.18, s * 0.12); g.fill({ color: 0xEF4444 });
+}
+
+function drawAnbuCorrupt(g: Graphics, size: number, color: number): void {
+  const s = size;
+
+  // Shadow
+  g.ellipse(0, s + 3, s * 0.75, s * 0.22); g.fill({ color: 0x000000, alpha: 0.32 });
+
+  // Katana across back
+  g.rect(-s * 0.8, -s * 1.1, s * 1.6, 2.5); g.fill({ color: 0xCBD5E1 });
+  g.rect( s * 0.5, -s * 1.2, s * 0.4, 3.5);  g.fill({ color: 0x1E293B }); // hilt
+
+  // Legs
+  g.rect(-s * 0.4, s * 0.2, s * 0.35, s * 0.75); g.fill({ color: 0x0F172A });
+  g.rect( s * 0.05, s * 0.2, s * 0.35, s * 0.75); g.fill({ color: 0x0F172A });
+
+  // Body & Flak vest
+  g.rect(-s * 0.45, -s * 0.25, s * 0.9, s * 0.5); g.fill({ color: 0x1E293B }); // dark suit
+  g.rect(-s * 0.35, -s * 0.25, s * 0.7, s * 0.45); g.fill({ color: color });    // vest
+
+  // Arms
+  g.rect(-s * 0.7, -s * 0.2, s * 0.25, s * 0.45); g.fill({ color: 0x0F172A });
+  g.rect( s * 0.45, -s * 0.2, s * 0.25, s * 0.45); g.fill({ color: 0x0F172A });
+
+  // White porcelain ANBU animal mask
+  g.roundRect(-s * 0.38, -s * 1.05, s * 0.76, s * 0.85, 4);
+  g.fill({ color: 0xF8FAFC });
+
+  // Crimson animal markings (Kitsune / Weasel pattern)
+  g.moveTo(-s * 0.25, -s * 0.9); g.lineTo(-s * 0.08, -s * 0.65);
+  g.stroke({ color: 0xDC2626, width: 2 });
+  g.moveTo( s * 0.25, -s * 0.9); g.lineTo( s * 0.08, -s * 0.65);
+  g.stroke({ color: 0xDC2626, width: 2 });
+
+  // Slit eye holes
+  g.rect(-s * 0.25, -s * 0.75, s * 0.16, s * 0.08); g.fill({ color: 0x09090B });
+  g.rect( s * 0.09, -s * 0.75, s * 0.16, s * 0.08); g.fill({ color: 0x09090B });
 }
 
 function drawSummon(g: Graphics, size: number, color: number): void {

@@ -145,10 +145,15 @@ export class Boss {
     this.id = ++Boss._idCounter;
     this.x = x;
     this.y = y;
-    const hpScale = 1 + minute * 0.20;
+    const hpScale = 1 + minute * 0.22;
+    const dmgScale = 1 + minute * 0.12;
     this.hp = Math.round(config.hpBase * hpScale);
     this.maxHp = this.hp;
-    this.config = config;
+    this.config = {
+      ...config,
+      damage: Math.round(config.damage * dmgScale),
+      specialAttackDamage: Math.round(config.specialAttackDamage * dmgScale),
+    };
 
     this.container = new Container();
 

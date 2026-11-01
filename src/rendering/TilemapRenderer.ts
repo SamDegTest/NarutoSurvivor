@@ -71,7 +71,172 @@ function seededRand(seed: number): number {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Main renderer
+//  Infinite Procedural Tilemap System
+//  Seamless procedural chunks without world borders or walls
+// ═══════════════════════════════════════════════════════════════
+
+export class InfiniteTilemap {
+  private readonly layer: Container;
+  private readonly biome: Biome;
+  private readonly pal: BiomePalette;
+  private readonly chunks = new Map<string, Container>();
+  private readonly chunkSize = 512;
+  private lastChunkX = -999999;
+  private lastChunkY = -999999;
+
+  constructor(biome: Biome, layer: Container) {
+    this.biome = biome;
+    this.pal = PALETTES[biome];
+    this.layer = layer;
+  }
+
+  update(playerX: number, playerY: number, force = false): void {
+    const curChunkX = Math.floor(playerX / this.chunkSize);
+    const curChunkY = Math.floor(playerY / this.chunkSize);
+
+    if (!force && curChunkX === this.lastChunkX && curChunkY === this.lastChunkY) {
+      return;
+    }
+    this.lastChunkX = curChunkX;
+    this.lastChunkY = curChunkY;
+
+    // View radius of 2 chunks in all directions (covers 2560 x 2560 px around player)
+    const needed = new Set<string>();
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dy = -2; dy <= 2; dy++) {
+        const cx = curChunkX + dx;
+        const cy = curChunkY + dy;
+        const key = `${cx}_${cy}`;
+        needed.add(key);
+        if (!this.chunks.has(key)) {
+          const chunk = this.createChunk(cx, cy);
+          this.chunks.set(key, chunk);
+          this.layer.addChild(chunk);
+        }
+      }
+    }
+
+    // Cull chunks outside range to maintain peak 60 FPS
+    for (const [key, chunk] of this.chunks.entries()) {
+      if (!needed.has(key)) {
+        this.layer.removeChild(chunk);
+        chunk.destroy({ children: true });
+        this.chunks.delete(key);
+      }
+    }
+  }
+
+  private createChunk(cx: number, cy: number): Container {
+    const container = new Container();
+    container.x = cx * this.chunkSize;
+    container.y = cy * this.chunkSize;
+
+    const g = new Graphics();
+    const pal = this.pal;
+
+    // 4x4 tiles of 128px
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const globalC = cx * 4 + c;
+        const globalR = cy * 4 + r;
+        const seed = Math.sin(globalC * 73856 + globalR * 19349) * 10000;
+        const rand = seed - Math.floor(seed);
+        const isVar = rand < 0.32;
+
+        g.rect(c * 128, r * 128, 128, 128);
+        g.fill({ color: isVar ? pal.groundVar : pal.groundBase });
+      }
+    }
+
+    // Subtle grid lines inside chunk
+    for (let i = 0; i <= this.chunkSize; i += 128) {
+      g.moveTo(i, 0); g.lineTo(i, this.chunkSize);
+      g.moveTo(0, i); g.lineTo(this.chunkSize, i);
+    }
+    g.stroke({ color: pal.gridColor, width: 1, alpha: 0.5 });
+
+    // Procedural decorations
+    const chunkSeed = Math.sin(cx * 154858 + cy * 324528) * 10000;
+    const r1 = chunkSeed - Math.floor(chunkSeed);
+    const r2 = Math.sin(chunkSeed * 2.5) * 10000;
+    const rand2 = r2 - Math.floor(r2);
+    const dx = 80 + rand2 * 340;
+    const dy = 80 + r1 * 340;
+
+    this.renderBiomeChunkDeco(g, this.biome, dx, dy, r1, pal);
+
+    container.addChild(g);
+    return container;
+  }
+
+  private renderBiomeChunkDeco(g: Graphics, biome: Biome, dx: number, dy: number, r: number, pal: BiomePalette): void {
+    if (biome === 'FOREST_OF_DEATH') {
+      if (r < 0.40) {
+        // Tree
+        g.rect(dx - 6, dy - 40, 12, 40); g.fill({ color: 0x44301E });
+        g.circle(dx, dy - 55, 26); g.fill({ color: pal.deco1, alpha: 0.9 });
+        g.circle(dx - 10, dy - 70, 18); g.fill({ color: pal.deco2, alpha: 0.8 });
+        g.circle(dx + 10, dy - 70, 18); g.fill({ color: pal.deco2, alpha: 0.8 });
+      } else if (r < 0.65) {
+        // Giant mushroom
+        g.rect(dx - 4, dy - 22, 8, 22); g.fill({ color: 0xFDE68A });
+        g.ellipse(dx, dy - 22, 22, 12); g.fill({ color: 0xDC2626 });
+        g.ellipse(dx, dy - 22, 10, 6); g.fill({ color: 0xFEF2F2 });
+      } else if (r < 0.85) {
+        // Water pool
+        g.ellipse(dx, dy, 24, 14); g.fill({ color: 0x0E7490, alpha: 0.5 });
+        g.ellipse(dx - 5, dy - 2, 8, 4); g.fill({ color: 0xE0F2FE, alpha: 0.35 });
+      } else {
+        // Brambles
+        g.circle(dx, dy, 12); g.fill({ color: 0x1A3B1A, alpha: 0.7 });
+        g.circle(dx + 12, dy - 4, 9); g.fill({ color: 0x14532D, alpha: 0.6 });
+      }
+    } else if (biome === 'VALLEY_OF_END') {
+      if (r < 0.35) {
+        // Monumental stone plinth
+        drawStatue(g, dx, dy, 32, r < 0.18);
+      } else if (r < 0.65) {
+        // Charred dead tree
+        g.rect(dx - 4, dy - 35, 8, 35); g.fill({ color: 0x1C0A0A });
+        g.moveTo(dx, dy - 24); g.lineTo(dx - 16, dy - 34); g.stroke({ color: 0x1C0A0A, width: 2.5 });
+        g.moveTo(dx, dy - 28); g.lineTo(dx + 18, dy - 38); g.stroke({ color: 0x1C0A0A, width: 2.5 });
+      } else {
+        // Jagged river / water pool
+        g.ellipse(dx, dy, 30, 15); g.fill({ color: 0x164E63, alpha: 0.6 });
+        g.moveTo(dx - 25, dy); g.lineTo(dx + 25, dy); g.stroke({ color: 0x38BDF8, width: 3, alpha: 0.4 });
+      }
+    } else {
+      // KONOHA VILLAGE
+      if (r < 0.35) {
+        // Torii gate
+        g.rect(dx - 20, dy - 45, 6, 45); g.fill({ color: 0xDC2626 });
+        g.rect(dx + 14, dy - 45, 6, 45); g.fill({ color: 0xDC2626 });
+        g.rect(dx - 28, dy - 48, 56, 7); g.fill({ color: 0x1E293B });
+        g.rect(dx - 24, dy - 38, 48, 5); g.fill({ color: 0xDC2626 });
+      } else if (r < 0.65) {
+        // Stone lantern (Ishidoro)
+        drawLantern(g, dx, dy, 16);
+      } else {
+        // Stone paving / training post
+        g.rect(dx - 6, dy - 36, 12, 36); g.fill({ color: 0x5C3818 });
+        g.rect(dx - 8, dy - 40, 16, 5); g.fill({ color: 0x3B2210 });
+      }
+    }
+  }
+
+  clear(): void {
+    for (const chunk of this.chunks.values()) {
+      this.layer.removeChild(chunk);
+      chunk.destroy({ children: true });
+    }
+    this.chunks.clear();
+    this.lastChunkX = -999999;
+    this.lastChunkY = -999999;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Legacy buildTilemap helper
 // ═══════════════════════════════════════════════════════════════
 
 export function buildTilemap(

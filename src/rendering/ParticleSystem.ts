@@ -311,6 +311,93 @@ export class ParticleSystem {
       p.rotSpeed = 0;
     }
   }
+
+  /** Healing sparkles and vitality aura (Ichiraku Ramen) */
+  emitHealing(x: number, y: number): void {
+    for (let i = 0; i < 24; i++) {
+      const p = this.acquire(); if (!p) continue;
+      const angle = (i / 24) * Math.PI * 2;
+      const speed = 30 + Math.random() * 60;
+      p.x = x + (Math.random() - 0.5) * 30;
+      p.y = y + (Math.random() - 0.5) * 30;
+      p.vx = Math.cos(angle) * speed * 0.5;
+      p.vy = -50 - Math.random() * 80; // upward rising
+      p.life = 1;
+      p.maxLife = 0.6 + Math.random() * 0.4;
+      p.startRadius = 4 + Math.random() * 4;
+      p.endRadius = 1;
+      p.color = i % 2 === 0 ? 0x22C55E : 0x86EFAC;
+      p.alpha = 0.95;
+      p.gravity = -30;
+      p.shape = 'star';
+      p.rotSpeed = (Math.random() - 0.5) * 8;
+    }
+  }
+
+  /** Giant incendiary detonation burst (Carta Bomba) */
+  emitBombExplosion(x: number, y: number): void {
+    // Fire & ember shockwave
+    for (let i = 0; i < 45; i++) {
+      const p = this.acquire(); if (!p) continue;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 120 + Math.random() * 300;
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.life = 1;
+      p.maxLife = 0.45 + Math.random() * 0.35;
+      p.startRadius = 8 + Math.random() * 12;
+      p.endRadius = 0;
+      p.color = i % 3 === 0 ? 0xEF4444 : (i % 3 === 1 ? 0xF97316 : 0xFBBF24);
+      p.alpha = 1;
+      p.gravity = 40;
+      p.shape = i % 2 === 0 ? 'circle' : 'star';
+      p.rotSpeed = (Math.random() - 0.5) * 14;
+    }
+
+    // Heavy black & gray blast smoke clouds
+    for (let i = 0; i < 20; i++) {
+      const p = this.acquire(); if (!p) continue;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 120;
+      p.x = x + (Math.random() - 0.5) * 20;
+      p.y = y + (Math.random() - 0.5) * 20;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed - 30;
+      p.life = 1;
+      p.maxLife = 0.6 + Math.random() * 0.5;
+      p.startRadius = 14 + Math.random() * 12;
+      p.endRadius = 24 + Math.random() * 16;
+      p.color = i % 2 === 0 ? 0x1F2937 : 0x374151;
+      p.alpha = 0.85;
+      p.gravity = -25;
+      p.shape = 'circle';
+      p.rotSpeed = 0;
+    }
+  }
+
+  /** Electromagnetic pulse shockwave (Magnete) */
+  emitMagnetPulse(x: number, y: number): void {
+    for (let i = 0; i < 30; i++) {
+      const p = this.acquire(); if (!p) continue;
+      const angle = (i / 30) * Math.PI * 2;
+      const speed = 80 + Math.random() * 120;
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.life = 1;
+      p.maxLife = 0.4 + Math.random() * 0.3;
+      p.startRadius = 5 + Math.random() * 5;
+      p.endRadius = 1;
+      p.color = i % 3 === 0 ? 0x38BDF8 : (i % 3 === 1 ? 0xA855F7 : 0x06B6D4);
+      p.alpha = 0.95;
+      p.gravity = 0;
+      p.shape = 'star';
+      p.rotSpeed = (Math.random() - 0.5) * 10;
+    }
+  }
 }
 
 // ── Star shape helper ────────────────────────────────────────

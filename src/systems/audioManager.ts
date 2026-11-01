@@ -19,7 +19,10 @@ export type SFXKind =
   | 'player_hurt'
   | 'game_over'
   | 'promotion'
-  | 'button_click';
+  | 'button_click'
+  | 'bomb_explode'
+  | 'magnet_pickup'
+  | 'ramen_heal';
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
@@ -81,6 +84,9 @@ export class AudioManager {
       case 'game_over':       this.synth_gameOver(ctx); break;
       case 'promotion':       this.synth_promotion(ctx); break;
       case 'button_click':    this.synth_click(ctx); break;
+      case 'bomb_explode':    this.synth_bombExplode(ctx); break;
+      case 'magnet_pickup':   this.synth_magnet(ctx); break;
+      case 'ramen_heal':      this.synth_heal(ctx); break;
     }
   }
 
@@ -266,6 +272,28 @@ export class AudioManager {
       this.osc(ctx, 'triangle', n * 2, t + i * 0.08 + 0.04, t + i * 0.08 + 0.18, 0.10);
     });
     this.noise(ctx, 0.5, 0.08, 4000);
+  }
+
+  private synth_bombExplode(ctx: AudioContext): void {
+    const t = ctx.currentTime;
+    this.noise(ctx, 0.8, 0.45, 120);
+    this.osc(ctx, 'sawtooth', 120, t, t + 0.5, 0.4);
+    this.osc(ctx, 'sine', 60, t + 0.1, t + 0.7, 0.35);
+  }
+
+  private synth_magnet(ctx: AudioContext): void {
+    const t = ctx.currentTime;
+    this.osc(ctx, 'sine', 380, t, t + 0.12, 0.2);
+    this.osc(ctx, 'sine', 640, t + 0.06, t + 0.22, 0.25);
+    this.osc(ctx, 'triangle', 1100, t + 0.12, t + 0.32, 0.2);
+  }
+
+  private synth_heal(ctx: AudioContext): void {
+    const t = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    notes.forEach((freq, idx) => {
+      this.osc(ctx, 'sine', freq, t + idx * 0.06, t + idx * 0.06 + 0.25, 0.22);
+    });
   }
 }
 

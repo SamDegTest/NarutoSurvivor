@@ -37,6 +37,8 @@ interface HUDData {
   activeJutsu?: Array<{ icon: string; name: string; level: number }>;
   activeTools?: Array<{ icon: string; name: string; level: number }>;
   slots?: HUDSlotData[];
+  threatBadge?: string;
+  threatColor?: number;
 }
 
 const FONT = GAME_CONFIG.FONT_FAMILY;
@@ -71,6 +73,7 @@ export class HUD {
   // Info texts
   private timerText!: Text;
   private enemyCountText!: Text;
+  private threatBadgeText!: Text;
   private ryoText!: Text;
   private chakraText!: Text;
   private levelText!: Text;
@@ -156,12 +159,18 @@ export class HUD {
     this.timerText.y = 8;
     this.container.addChild(this.timerText);
 
-    // ── Enemy count ───────────────────────────────────────────
+    // ── Enemy count & Threat Level ────────────────────────────
     this.enemyCountText = makeText('0 nemici', 12, 0xFCA5A5);
-    this.enemyCountText.anchor.set(0.5, 0);
-    this.enemyCountText.x = W / 2;
+    this.enemyCountText.anchor.set(1, 0);
+    this.enemyCountText.x = W / 2 - 8;
     this.enemyCountText.y = 38;
     this.container.addChild(this.enemyCountText);
+
+    this.threatBadgeText = makeText('• MINACCIA: BASSA 🟢', 11, 0x22C55E, true);
+    this.threatBadgeText.anchor.set(0, 0);
+    this.threatBadgeText.x = W / 2 + 4;
+    this.threatBadgeText.y = 39;
+    this.container.addChild(this.threatBadgeText);
 
     // ── Right panel ───────────────────────────────────────────
     this.chakraText = makeText('◉ 0', 14, 0x22D3EE);
@@ -271,6 +280,12 @@ export class HUD {
     this.timerText.text = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
     this.enemyCountText.text = `${data.enemyCount} nemici`;
+    if (data.threatBadge) {
+      this.threatBadgeText.text = `• MINACCIA: ${data.threatBadge}`;
+      if (data.threatColor !== undefined) {
+        this.threatBadgeText.style.fill = data.threatColor;
+      }
+    }
     this.chakraText.text = `◉ ${data.chakraOrbs}`;
     this.ryoText.text = `¥ ${data.ryo}`;
     this.fragmentText.text = `✦ ${data.fragments} frammenti`;
@@ -447,6 +462,17 @@ export class HUD {
     container.y = screenY;
     this.container.addChild(container);
     this.dmgNumbers.push({ container, text, life: 1.2, vy: isCrit ? 2.0 : 1.3 });
+  }
+
+  showHealNumber(screenX: number, screenY: number, value: number): void {
+    const container = new Container();
+    const text = makeText(`+${value} HP 💚`, 17, 0x4ADE80, true);
+    text.anchor.set(0.5);
+    container.addChild(text);
+    container.x = screenX;
+    container.y = screenY;
+    this.container.addChild(container);
+    this.dmgNumbers.push({ container, text, life: 1.4, vy: 1.8 });
   }
 
   showToast(message: string): void {

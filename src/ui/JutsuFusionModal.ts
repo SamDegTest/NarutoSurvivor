@@ -12,6 +12,7 @@ export interface CombatJutsuSlot {
   id: string;
   name: string;
   moves: ActiveJutsuInstance[];
+  slotCooldownTimer?: number;
 }
 
 function makeText(
