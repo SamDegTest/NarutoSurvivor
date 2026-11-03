@@ -4,6 +4,7 @@ import { SaveSystem } from '../systems/saveSystem';
 import { audioManager } from '../systems/audioManager';
 import { renderStars } from '../systems/promotionSystem';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon } from '../rendering/IconManager';
 import type { Character } from '../types/character';
 
 // ============================================================
@@ -33,6 +34,8 @@ export interface MainMenuCallbacks {
   onOpenMissions: () => void;
   onOpenFriends: () => void;
   onOpenLeaderboard: () => void;
+  onOpenMultiplayer?: () => void;
+  onOpenCodex?: () => void;
 }
 
 export class MainMenuScreen {
@@ -158,21 +161,27 @@ export class MainMenuScreen {
 
     // 1. Ryo currency pill (🪙 7,975)
     const ryoPill = new Container();
-    ryoPill.x = 360;
+    ryoPill.x = 350;
     const ryoBg = new Graphics();
-    ryoBg.roundRect(0, 0, 105, 32, 16);
+    ryoBg.roundRect(0, 0, 115, 32, 16);
     ryoBg.fill({ color: 0x0F172A, alpha: 0.85 });
-    ryoBg.roundRect(0, 0, 105, 32, 16);
-    ryoBg.stroke({ color: 0x334155, width: 1.5 });
+    ryoBg.roundRect(0, 0, 115, 32, 16);
+    ryoBg.stroke({ color: 0xF59E0B, width: 1.5 });
     ryoPill.addChild(ryoBg);
-    this.ryoPillText = makeText('🪙 7,975', 12, 0xFBBF24, true);
-    this.ryoPillText.anchor.set(0.5);
-    this.ryoPillText.x = 52;
+
+    const ryoIcon = createNarutoIcon('ryo', 22);
+    ryoIcon.x = 18;
+    ryoIcon.y = 16;
+    ryoPill.addChild(ryoIcon);
+
+    this.ryoPillText = makeText('7,975', 12, 0xFBBF24, true);
+    this.ryoPillText.anchor.set(0, 0.5);
+    this.ryoPillText.x = 34;
     this.ryoPillText.y = 16;
     ryoPill.addChild(this.ryoPillText);
     topBar.addChild(ryoPill);
 
-    // 2. Scrolls pill (🎫 43  🎟️ 7)
+    // 2. Scrolls pill
     const scrollsPill = new Container();
     scrollsPill.x = 475;
     const scBg = new Graphics();
@@ -181,9 +190,15 @@ export class MainMenuScreen {
     scBg.roundRect(0, 0, 115, 32, 16);
     scBg.stroke({ color: 0x334155, width: 1.5 });
     scrollsPill.addChild(scBg);
-    this.scrollsPillText = makeText('📜 43  🔖 7', 12, 0x38BDF8, true);
-    this.scrollsPillText.anchor.set(0.5);
-    this.scrollsPillText.x = 57;
+
+    const scrollIcon = createNarutoIcon('scroll', 22);
+    scrollIcon.x = 18;
+    scrollIcon.y = 16;
+    scrollsPill.addChild(scrollIcon);
+
+    this.scrollsPillText = makeText('43  🔖 7', 12, 0x38BDF8, true);
+    this.scrollsPillText.anchor.set(0, 0.5);
+    this.scrollsPillText.x = 34;
     this.scrollsPillText.y = 16;
     scrollsPill.addChild(this.scrollsPillText);
     topBar.addChild(scrollsPill);
@@ -475,6 +490,22 @@ export class MainMenuScreen {
         action: () => this.callbacks?.onOpenFriends(),
       },
       {
+        id: 'multiplayer',
+        icon: '⚔️',
+        title: 'Multiplayer (Co-op)',
+        subtitle: 'Online P2P & Locale a 2 Giocatori',
+        color: 0x818CF8,
+        action: () => this.callbacks?.onOpenMultiplayer?.(),
+      },
+      {
+        id: 'codex',
+        icon: '📖',
+        title: 'Libro Bingo (Codex)',
+        subtitle: 'Enciclopedia Shinobi, Tecniche & Boss',
+        color: 0xFDE047,
+        action: () => this.callbacks?.onOpenCodex?.(),
+      },
+      {
         id: 'leaderboard',
         icon: '🏆',
         title: 'Classifica (Hokage)',
@@ -492,9 +523,9 @@ export class MainMenuScreen {
       },
     ];
 
-    const itemH = 46;
-    const gap = 6;
-    const startY = 16;
+    const itemH = 39;
+    const gap = 5;
+    const startY = 10;
 
     MENU_ITEMS.forEach((item, i) => {
       const row = new Container();
@@ -508,9 +539,8 @@ export class MainMenuScreen {
       rBg.fill({ color: 0x0F172A, alpha: 0.65 });
       row.addChild(rBg);
 
-      // Icon
-      const icon = makeText(item.icon, 20, 0xFFFFFF);
-      icon.anchor.set(0.5);
+      // Authentic Naruto Anime Icon Image
+      const icon = createNarutoIcon(item.id, 28);
       icon.x = 24;
       icon.y = itemH / 2;
       row.addChild(icon);
@@ -605,9 +635,25 @@ export class MainMenuScreen {
     this.callbacks = callbacks;
     this.refreshData();
     this.container.visible = true;
-    GamepadMenuNavigator.get()?.setContext({
+
+    // Build or update navItems including showcase card
+    const items: NavigatableItem[] = this.navItems.map((item) => ({
+      ...item,
+      leftIndex: this.navItems.length, // Left goes to showcase card
+    }));
+
+    // Add showcase card as index 12
+    if (this.showcaseCard) {
+      items.push({
+        container: this.showcaseCard,
+        onSelect: () => this.callbacks?.onOpenRoster(),
+        rightIndex: 0, // Right returns to sidebar
+      });
+    }
+
+    GamepadMenuNavigator.get()?.pushContext({
       id: 'main_menu',
-      items: this.navItems,
+      items,
       selectedIndex: 0,
     });
   }
@@ -621,8 +667,8 @@ export class MainMenuScreen {
     const profile = SaveSystem.getProfile();
 
     // Top pills
-    this.ryoPillText.text = `🪙 ${profile.ryo.toLocaleString()}`;
-    this.scrollsPillText.text = `📜 ${profile.scrolls}  🔖 ${profile.ninjaSeals}`;
+    this.ryoPillText.text = `${profile.ryo.toLocaleString()}`;
+    this.scrollsPillText.text = `${profile.scrolls}  🔖 ${profile.ninjaSeals}`;
     this.profilePillText.text = `👑 ${profile.playerName.slice(0, 10)}...`;
 
     // Active character

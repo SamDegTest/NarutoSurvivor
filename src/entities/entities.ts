@@ -63,6 +63,8 @@ export class Player {
   maxHp: number;
   collectRadius: number;
   characterColor: number;
+  isAwakened = false;
+  private awakenRot = 0;
 
   constructor(character: Character) {
     this.x = 0;
@@ -88,16 +90,19 @@ export class Player {
     const dx = input.moveX;
     const dy = input.moveY;
 
+    const effSpeed = this.isAwakened ? this.speed * 1.45 : this.speed;
+
     if (dx !== 0 || dy !== 0) {
       const len = Math.hypot(dx, dy);
       const nx = dx / len;
       const ny = dy / len;
 
-      this.trail.push({ x: this.x, y: this.y, alpha: 0.5 });
-      if (this.trail.length > 6) this.trail.shift();
+      this.trail.push({ x: this.x, y: this.y, alpha: this.isAwakened ? 0.8 : 0.5 });
+      const maxTrail = this.isAwakened ? 12 : 6;
+      if (this.trail.length > maxTrail) this.trail.shift();
 
-      this.x += nx * this.speed * dt;
-      this.y += ny * this.speed * dt;
+      this.x += nx * effSpeed * dt;
+      this.y += ny * effSpeed * dt;
 
       // Infinite world: free movement without border clamping
 
@@ -106,10 +111,31 @@ export class Player {
     }
 
     // Pulse aura glow
-    const pulse = 1 + Math.sin(Date.now() / 400) * 0.12;
     this.aura.clear();
-    this.aura.circle(0, 0, GAME_CONFIG.PLAYER_HITBOX_RADIUS + 12);
-    this.aura.fill({ color: this.characterColor, alpha: 0.14 * pulse });
+    if (this.isAwakened) {
+      this.awakenRot += dt * 5.0;
+      const auraColor = 0xFBBF24; // Radiant Gold Awakening
+      // Blazing rotating solar rays
+      const count = 8;
+      const rInner = GAME_CONFIG.PLAYER_HITBOX_RADIUS + 8;
+      const rOuter = GAME_CONFIG.PLAYER_HITBOX_RADIUS + 24;
+      for (let i = 0; i < count; i++) {
+        const a = this.awakenRot + (i * Math.PI * 2) / count;
+        this.aura.poly([
+          Math.cos(a) * rOuter, Math.sin(a) * rOuter,
+          Math.cos(a + 0.25) * rInner, Math.sin(a + 0.25) * rInner,
+          Math.cos(a - 0.25) * rInner, Math.sin(a - 0.25) * rInner,
+        ], true);
+        this.aura.fill({ color: auraColor, alpha: 0.65 });
+      }
+      this.aura.circle(0, 0, rInner + 4);
+      this.aura.fill({ color: auraColor, alpha: 0.35 });
+      this.aura.stroke({ color: 0xF59E0B, width: 2, alpha: 0.9 });
+    } else {
+      const pulse = 1 + Math.sin(Date.now() / 400) * 0.12;
+      this.aura.circle(0, 0, GAME_CONFIG.PLAYER_HITBOX_RADIUS + 12);
+      this.aura.fill({ color: this.characterColor, alpha: 0.14 * pulse });
+    }
 
     this.container.x = this.x;
     this.container.y = this.y;
@@ -166,11 +192,19 @@ export const ENEMY_TEMPLATES: Record<EnemyType, EnemyConfig> = {
   },
 };
 
+export interface EnemyRangedAttack {
+  type: 'kunai' | 'shuriken';
+  angle: number;
+  damage: number;
+  speed: number;
+}
+
 export class Enemy {
   readonly container: Container;
   private readonly body: Graphics;
   private readonly eliteAura?: Graphics;
   private auraTimer = 0;
+  private rangedCooldownTimer = 2.0 + Math.random() * 3.0;
 
   id: number;
   x: number;
@@ -205,7 +239,7 @@ export class Enemy {
     this.container.y = y;
   }
 
-  update(dt: number, targetX: number, targetY: number): void {
+  update(dt: number, targetX: number, targetY: number): { shootProjectile?: EnemyRangedAttack } {
     const dx = targetX - this.x;
     const dy = targetY - this.y;
     const dist = Math.hypot(dx, dy);
@@ -216,6 +250,9 @@ export class Enemy {
     this.container.x = this.x;
     this.container.y = this.y;
 
+    // Flip enemy sprite horizontally based on movement direction
+    if (this.body) this.body.scale.x = dx < 0 ? -1 : 1;
+
     // Pulse elite aura
     if (this.eliteAura) {
       this.auraTimer += dt * 4;
@@ -225,6 +262,26 @@ export class Enemy {
       this.eliteAura.fill({ color: 0xFBBF24, alpha: 0.22 });
       this.eliteAura.stroke({ color: 0xF59E0B, width: 2, alpha: 0.85 });
     }
+
+    // Check ranged attack for ANBU, Traitor Ninja or Elites
+    let shootProjectile: EnemyRangedAttack | undefined;
+    const canShoot = this.config.type === 'anbu_corrupt' || this.config.type === 'traitor_ninja' || this.config.isElite;
+    if (canShoot && dist > 70 && dist < 360) {
+      this.rangedCooldownTimer -= dt;
+      if (this.rangedCooldownTimer <= 0) {
+        this.rangedCooldownTimer = 3.8 + Math.random() * 2.2;
+        const angle = Math.atan2(dy, dx);
+        const projType: 'kunai' | 'shuriken' = (this.config.type === 'anbu_corrupt' || this.config.isElite) ? 'shuriken' : 'kunai';
+        shootProjectile = {
+          type: projType,
+          angle,
+          damage: Math.max(6, Math.round(this.config.damage * 0.65)),
+          speed: projType === 'shuriken' ? 240 : 210,
+        };
+      }
+    }
+
+    return { shootProjectile };
   }
 
   takeDamage(amount: number): void {

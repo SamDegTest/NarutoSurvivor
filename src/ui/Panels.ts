@@ -2,6 +2,7 @@ import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { renderStars } from '../systems/promotionSystem';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon, ICON_PATHS } from '../rendering/IconManager';
 import type { StarRank } from '../types/character';
 
 // ============================================================
@@ -15,9 +16,10 @@ export interface UpgradeOption {
   description: string;
   apply: (stats: UpgradeTarget) => void;
   color: number;
-  type?: 'stat' | 'new_jutsu' | 'jutsu_level' | 'ninja_tool' | 'synergy_evolution';
+  type?: 'stat' | 'new_jutsu' | 'jutsu_level' | 'ninja_tool' | 'synergy_evolution' | 'plus_evolution';
   tag?: string;
   isSynergy?: boolean;
+  isPlusEvolution?: boolean;
   levelText?: string;
 }
 
@@ -173,7 +175,14 @@ export class LevelUpPanel {
     stage.addChild(this.container);
   }
 
-  show(level: number, onChoose: (opt: UpgradeOption) => void, customOptions?: UpgradeOption[]): void {
+  show(
+    level: number,
+    onChoose: (opt: UpgradeOption) => void,
+    customOptions?: UpgradeOption[],
+    onReroll?: () => void,
+    rerollCost = 100,
+    canReroll = false,
+  ): void {
     this.onChoose = onChoose;
     this.container.removeChildren();
     this.container.visible = true;
@@ -189,20 +198,26 @@ export class LevelUpPanel {
     this.container.addChild(overlay);
 
     // Title
+    const hasPlus = options.some(o => o.isPlusEvolution);
     const hasSynergy = options.some(o => o.isSynergy);
-    const titleText = hasSynergy
-      ? `✨ LIVELLO ${level} — RISVEGLIO SINERGIA DISPONIBILE! ✨`
-      : `⬆ LIVELLO ${level} — Scegli un Potenziamento`;
-    const title = label(titleText, 25, hasSynergy ? 0xFBBF24 : 0xF97316, true);
+    const titleText = hasPlus
+      ? `✨ LIVELLO ${level} — RISVEGLIO FORMA PLUS (+) DISPONIBILE! ✨`
+      : (hasSynergy
+        ? `✨ LIVELLO ${level} — RISVEGLIO SINERGIA DISPONIBILE! ✨`
+        : `⬆ LIVELLO ${level} — Scegli un Potenziamento`);
+    const titleColor = hasPlus ? 0xFDE047 : (hasSynergy ? 0xFBBF24 : 0xF97316);
+    const title = label(titleText, 25, titleColor, true);
     title.anchor.set(0.5, 0);
     title.x = W / 2;
     title.y = H * 0.10;
     this.container.addChild(title);
 
     // Subtitle
-    const subText = hasSynergy
-      ? 'La combinazione dei tuoi elementi ha sbloccato una Tecnica Segreta!'
-      : 'Evolvi il tuo arsenale ninja per dominare il campo di battaglia';
+    const subText = hasPlus
+      ? 'La statistica richiesta è stata potenziata! Puoi ora sbloccare la tecnica potenziata Plus (+)'
+      : (hasSynergy
+        ? 'La combinazione dei tuoi elementi ha sbloccato una Tecnica Segreta!'
+        : 'Evolvi il tuo arsenale ninja per dominare il campo di battaglia');
     const sub = label(subText, 14, 0x9CA3AF);
     sub.anchor.set(0.5, 0);
     sub.x = W / 2;
@@ -234,8 +249,35 @@ export class LevelUpPanel {
       selectedIndex: 0,
     });
 
+    // Reroll button
+    if (onReroll) {
+      const rerollBtn = new Container();
+      rerollBtn.eventMode = 'static';
+      rerollBtn.cursor = canReroll ? 'pointer' : 'default';
+      const rBg = new Graphics();
+      rBg.roundRect(0, 0, 180, 32, 8);
+      rBg.fill({ color: canReroll ? 0x1E293B : 0x0F172A });
+      rBg.stroke({ color: canReroll ? 0xFBBF24 : 0x475569, width: 1.5 });
+      rerollBtn.addChild(rBg);
+
+      const rTxt = label(`Reroll (${rerollCost} ¥) [R]`, 11, canReroll ? 0xFDE047 : 0x64748B, true);
+      rTxt.anchor.set(0.5);
+      rTxt.x = 90; rTxt.y = 16;
+      rerollBtn.addChild(rTxt);
+
+      rerollBtn.x = W / 2 - 90;
+      rerollBtn.y = H - 65;
+      this.container.addChild(rerollBtn);
+
+      if (canReroll) {
+        rerollBtn.on('pointerdown', () => {
+          onReroll();
+        });
+      }
+    }
+
     // Tip
-    const tip = label('🎮 Joystick: Sposta focus  •  [ A ]: Seleziona  •  Tastiera: 1, 2, 3', 12, 0x6B7280);
+    const tip = label('Joystick: Sposta focus  •  [ A ]: Seleziona  •  Tastiera: 1, 2, 3' + (canReroll ? '  •  R: Reroll' : ''), 12, 0x6B7280);
     tip.anchor.set(0.5, 1);
     tip.x = W / 2;
     tip.y = H - 24;
@@ -247,6 +289,9 @@ export class LevelUpPanel {
       if (idx >= 0 && idx < options.length) {
         window.removeEventListener('keydown', onKey);
         this.choose(options[idx]);
+      } else if (e.code === 'KeyR' && onReroll && canReroll) {
+        window.removeEventListener('keydown', onKey);
+        onReroll();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -258,25 +303,34 @@ export class LevelUpPanel {
     card.cursor = 'pointer';
 
     const isSyn = !!opt.isSynergy;
-    const borderColor = isSyn ? 0xFBBF24 : opt.color;
-    const borderWidth = isSyn ? 3 : 2;
+    const isPlus = !!opt.isPlusEvolution || opt.type === 'plus_evolution';
+    const borderColor = isPlus ? 0xF59E0B : (isSyn ? 0xFBBF24 : opt.color);
+    const borderWidth = (isPlus || isSyn) ? 3 : 2;
 
     const bg = new Graphics();
     bg.roundRect(0, 0, W, H, 14);
-    bg.fill({ color: isSyn ? 0x1A1429 : 0x111827 });
-    bg.stroke({ color: borderColor, width: borderWidth, alpha: isSyn ? 1 : 0.75 });
+    bg.fill({ color: isPlus ? 0x221303 : (isSyn ? 0x1A1429 : 0x111827) });
+    bg.stroke({ color: borderColor, width: borderWidth, alpha: (isPlus || isSyn) ? 1 : 0.75 });
     card.addChild(bg);
 
+    // Golden corner corner glows for Plus moves
+    if (isPlus) {
+      const glow = new Graphics();
+      glow.roundRect(4, 4, W - 8, H - 8, 12);
+      glow.stroke({ color: 0xFDE047, width: 1.2, alpha: 0.6 });
+      card.addChild(glow);
+    }
+
     // Top Tag Badge
-    if (opt.tag || isSyn) {
-      const tagText = isSyn ? '★ SINERGIA ELEMENTALE ★' : opt.tag!;
+    if (opt.tag || isSyn || isPlus) {
+      const tagText = isPlus ? '✦ EVOLUZIONE PLUS (+) ✦' : (isSyn ? '★ SINERGIA ELEMENTALE ★' : opt.tag!);
       const tagBg = new Graphics();
-      tagBg.roundRect(W / 2 - 80, -10, 160, 20, 10);
-      tagBg.fill({ color: isSyn ? 0x78350F : 0x1F2937 });
-      tagBg.stroke({ color: isSyn ? 0xFBBF24 : opt.color, width: 1.5 });
+      tagBg.roundRect(W / 2 - 86, -10, 172, 20, 10);
+      tagBg.fill({ color: isPlus ? 0x78350F : (isSyn ? 0x78350F : 0x1F2937) });
+      tagBg.stroke({ color: isPlus ? 0xFDE047 : (isSyn ? 0xFBBF24 : opt.color), width: 1.5 });
       card.addChild(tagBg);
 
-      const tagLbl = label(tagText, 9, isSyn ? 0xFDE68A : 0xE5E7EB, true);
+      const tagLbl = label(tagText, 9, (isPlus || isSyn) ? 0xFDE68A : 0xE5E7EB, true);
       tagLbl.anchor.set(0.5);
       tagLbl.x = W / 2;
       tagLbl.y = 0;
@@ -285,22 +339,31 @@ export class LevelUpPanel {
 
     // Level Badge if present
     if (opt.levelText) {
-      const lvlLbl = label(opt.levelText, 11, opt.color, true);
+      const lvlLbl = label(opt.levelText, 11, isPlus ? 0xFDE047 : opt.color, true);
       lvlLbl.anchor.set(1, 0);
       lvlLbl.x = W - 14;
       lvlLbl.y = 12;
       card.addChild(lvlLbl);
     }
 
-    // Icon
-    const icon = label(opt.icon, isSyn ? 46 : 40);
-    icon.anchor.set(0.5, 0);
-    icon.x = W / 2;
-    icon.y = 20;
-    card.addChild(icon);
+    // Icon (Authentic Naruto Image or fallback)
+    let iconElem: Container;
+    const iconKey = ICON_PATHS[opt.id] ? opt.id : (opt.type && ICON_PATHS[opt.type] ? opt.type : null);
+    if (iconKey) {
+      iconElem = createNarutoIcon(iconKey, (isPlus || isSyn) ? 46 : 42);
+      iconElem.x = W / 2;
+      iconElem.y = 44;
+    } else {
+      const textIcon = label(opt.icon, (isPlus || isSyn) ? 46 : 40);
+      textIcon.anchor.set(0.5, 0);
+      textIcon.x = W / 2;
+      textIcon.y = 20;
+      iconElem = textIcon;
+    }
+    card.addChild(iconElem);
 
     // Title
-    const title = label(opt.title, 14, isSyn ? 0xFDE68A : opt.color, true);
+    const title = label(opt.title, 14, isPlus ? 0xFDE047 : (isSyn ? 0xFDE68A : opt.color), true);
     title.anchor.set(0.5, 0);
     title.x = W / 2;
     title.y = 78;
@@ -310,7 +373,7 @@ export class LevelUpPanel {
     const desc = new Text({
       text: opt.description,
       style: new TextStyle({
-        fontFamily: FONT, fontSize: 11, fill: isSyn ? 0xFEF08A : 0xD1D5DB,
+        fontFamily: FONT, fontSize: 11, fill: isPlus ? 0xFEF08A : (isSyn ? 0xFEF08A : 0xD1D5DB),
         wordWrap: true, wordWrapWidth: W - 24, align: 'center',
       }),
     });
@@ -322,10 +385,10 @@ export class LevelUpPanel {
     // Select button bar
     const bar = new Graphics();
     bar.roundRect(20, H - 34, W - 40, 22, 8);
-    bar.fill({ color: isSyn ? 0xF59E0B : opt.color });
+    bar.fill({ color: isPlus ? 0xF59E0B : (isSyn ? 0xF59E0B : opt.color) });
     card.addChild(bar);
-    const btnText = isSyn ? 'SBLOCCA SINERGIA' : 'SELEZIONA';
-    const selectLbl = label(btnText, 10, isSyn ? 0x000000 : 0x000000, true);
+    const btnText = isPlus ? '✦ RISVEGLIA FORMA PLUS ✦' : (isSyn ? 'SBLOCCA SINERGIA' : 'SELEZIONA');
+    const selectLbl = label(btnText, 10, (isPlus || isSyn) ? 0x000000 : 0x000000, true);
     selectLbl.anchor.set(0.5);
     selectLbl.x = W / 2;
     selectLbl.y = H - 23;
@@ -481,14 +544,33 @@ export class PromotionPanel {
     this.container.addChild(btnLbl);
 
     // Close hint
-    const closeTxt = label('ESC o clicca fuori per chiudere', 11, 0x4B5563);
+    const closeTxt = label('ESC o [ B ] per chiudere', 11, 0x4B5563);
     closeTxt.anchor.set(0.5, 1);
     closeTxt.x = W / 2;
     closeTxt.y = py + panelH - 12;
     this.container.addChild(closeTxt);
+
+    if (canPromote) {
+      GamepadMenuNavigator.get()?.pushContext({
+        id: 'promotion_panel',
+        items: [{ container: btn, onSelect: () => { this.hide(); onPromote(); } }],
+        selectedIndex: 0,
+        onCancel: () => this.hide(),
+      });
+    } else {
+      GamepadMenuNavigator.get()?.pushContext({
+        id: 'promotion_panel',
+        items: [],
+        selectedIndex: 0,
+        onCancel: () => this.hide(),
+      });
+    }
   }
 
-  hide(): void { this.container.visible = false; }
+  hide(): void {
+    GamepadMenuNavigator.get()?.popContext('promotion_panel');
+    this.container.visible = false;
+  }
   get isVisible(): boolean { return this.container.visible; }
 }
 
@@ -511,7 +593,7 @@ export class BossWarningBanner {
     this.container.addChild(bg);
 
     const txt = new Text({
-      text: '⚠ ATTENZIONE — BOSS IN ARRIVO ⚠',
+      text: 'ALLERTA — BOSS IN ARRIVO',
       style: new TextStyle({
         fontFamily: GAME_CONFIG.FONT_FAMILY,
         fontSize: 32,
@@ -533,7 +615,7 @@ export class BossWarningBanner {
     this.timer = this.duration;
     // Update text
     const txt = this.container.children[1] as Text;
-    txt.text = `⚠  ${bossName.toUpperCase()}  SI AVVICINA  ⚠`;
+    txt.text = `ALLERTA — ${bossName.toUpperCase()} SI AVVICINA`;
   }
 
   update(dt: number): void {

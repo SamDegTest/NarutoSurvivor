@@ -103,6 +103,16 @@ export const BOSS_CONFIGS: Record<BossType, BossConfig> = {
   },
 };
 
+export interface BossAttackResult {
+  specialAttack: boolean;
+  bossRangedProjectiles?: Array<{
+    type: 'water_shark' | 'fireball' | 'chakra_rod';
+    angle: number;
+    damage: number;
+    speed: number;
+  }>;
+}
+
 export class Boss {
   readonly container: Container;
   private body: Graphics;
@@ -121,6 +131,7 @@ export class Boss {
   isPhase2 = false;
 
   private specialAttackTimer = 0;
+  private rangedAttackTimer = 2.5;
   private floatAngle = 0;
   private pulseAngle = 0;
 
@@ -205,7 +216,7 @@ export class Boss {
     this.hpBarFill.fill({ color });
   }
 
-  update(dt: number, targetX: number, targetY: number): { specialAttack: boolean } {
+  update(dt: number, targetX: number, targetY: number): BossAttackResult {
     this.floatAngle += dt * 1.2;
     this.pulseAngle += dt * 3.0;
 
@@ -236,7 +247,7 @@ export class Boss {
       this.rebuildSprite(true);
     }
 
-    // Special attack
+    // Special AoE shockwave attack
     this.specialAttackTimer -= dt;
     const doSpecial = this.specialAttackTimer <= 0;
     if (doSpecial) {
@@ -245,7 +256,64 @@ export class Boss {
         : this.config.specialAttackInterval;
     }
 
-    return { specialAttack: doSpecial };
+    // Signature Boss Ranged Projectiles
+    this.rangedAttackTimer -= dt;
+    let bossRangedProjectiles: Array<{
+      type: 'water_shark' | 'fireball' | 'chakra_rod';
+      angle: number;
+      damage: number;
+      speed: number;
+    }> | undefined;
+
+    if (this.rangedAttackTimer <= 0 && dist < 540) {
+      this.rangedAttackTimer = this.isPhase2 ? 2.8 : 4.0;
+      const baseAngle = Math.atan2(dy, dx);
+      bossRangedProjectiles = [];
+
+      if (this.config.type === 'kisame') {
+        const spread = [-0.28, 0, 0.28];
+        for (const off of spread) {
+          bossRangedProjectiles.push({
+            type: 'water_shark',
+            angle: baseAngle + off,
+            damage: Math.round(this.config.damage * 0.75),
+            speed: 220,
+          });
+        }
+      } else if (this.config.type === 'itachi') {
+        const spread = [-0.22, 0, 0.22];
+        for (const off of spread) {
+          bossRangedProjectiles.push({
+            type: 'fireball',
+            angle: baseAngle + off,
+            damage: Math.round(this.config.damage * 0.85),
+            speed: 245,
+          });
+        }
+      } else if (this.config.type === 'pain_tendo') {
+        const spread = [-0.14, 0.14];
+        for (const off of spread) {
+          bossRangedProjectiles.push({
+            type: 'chakra_rod',
+            angle: baseAngle + off,
+            damage: Math.round(this.config.damage * 1.05),
+            speed: 295,
+          });
+        }
+      } else if (this.config.type === 'ten_tails') {
+        const spread = [-0.48, -0.24, 0, 0.24, 0.48];
+        for (const off of spread) {
+          bossRangedProjectiles.push({
+            type: 'fireball',
+            angle: baseAngle + off,
+            damage: Math.round(this.config.damage * 1.15),
+            speed: 260,
+          });
+        }
+      }
+    }
+
+    return { specialAttack: doSpecial, bossRangedProjectiles };
   }
 
   takeDamage(amount: number): void {
@@ -263,6 +331,6 @@ export class Boss {
 export const BOSS_SCHEDULE: [number, BossType][] = [
   [3,  'kisame'],
   [7,  'itachi'],
-  [12, 'pain_tendo'],
-  [20, 'ten_tails'],
+  [11, 'pain_tendo'],
+  [15, 'ten_tails'],
 ];

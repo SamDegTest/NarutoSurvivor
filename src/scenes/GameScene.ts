@@ -39,6 +39,13 @@ import {
 } from '../data/jutsuCatalog';
 import { JutsuFusionModal, type CombatJutsuSlot } from '../ui/JutsuFusionModal';
 import { difficultyManager } from '../systems/difficultyManager';
+import { CompanionShinobi } from '../entities/CompanionShinobi';
+import { computeTeamSynergy } from '../ui/TeamModal';
+import { getCharacterById } from '../data/roster';
+import { DestructibleObject, type DestructibleType } from '../entities/DestructibleObject';
+import { BossPortal } from '../entities/BossPortal';
+import { CoopPlayerShinobi } from '../entities/CoopPlayerShinobi';
+import { type MultiplayerMode } from '../network/MultiplayerManager';
 import type { Character } from '../types/character';
 import type { StarRank } from '../types/character';
 
@@ -50,6 +57,11 @@ export interface PlayerSession {
   character: Character;
   rank: StarRank;
   fragments: number;
+  stageBiome?: Biome | 'RANDOM';
+  stageName?: string;
+  stageId?: string;
+  multiplayerMode?: MultiplayerMode;
+  coopPartner?: Character;
 }
 
 // XP thresholds per level (index = level) — calibrated for fast early upgrades and smooth curve
@@ -77,6 +89,20 @@ export class GameScene {
   private promotionPanel!: PromotionPanel;
   private bossWarning!: BossWarningBanner;
   private gameOverScene!: GameOverScene;
+  private companion?: CompanionShinobi;
+  private awakeningMeter = 20;
+  private awakeningActive = false;
+  private awakeningTimer = 0;
+  private destructibles: DestructibleObject[] = [];
+  private lastDestructibleSpawnX = 0;
+  private lastDestructibleSpawnY = 0;
+  private activeBossPortal?: BossPortal;
+  private returnPortal?: BossPortal;
+  private isInsideBossDimension = false;
+  private savedOverworldX = 0;
+  private savedOverworldY = 0;
+  private savedOverworldBiome: Biome = 'KONOHA_VILLAGE';
+  private coopPartnerShinobi?: CoopPlayerShinobi;
 
   // ── Session state & Metrics ────────────────────────────────
   private elapsedSec = 0;
@@ -131,6 +157,10 @@ export class GameScene {
   }
 
   private returnToMenu(): void {
+    this.paused = false;
+    if (this.hud) {
+      this.hud.destroy();
+    }
     this.stop();
     this.world.visible = false;
     this.uiLayer.visible = false;
@@ -153,6 +183,13 @@ export class GameScene {
     this.totalKills = 0;
     this.bossesDefeatedCount = 0;
     this.scrollsEarnedInRun = 0;
+    this.awakeningMeter = 20;
+    this.awakeningActive = false;
+    this.awakeningTimer = 0;
+    this.destructibles = [];
+    this.activeBossPortal = undefined;
+    this.returnPortal = undefined;
+    this.isInsideBossDimension = false;
     this.enemies = [];
     this.bosses  = [];
     this.collectibles = [];
@@ -175,8 +212,17 @@ export class GameScene {
       this.paused = !this.paused;
     };
 
+    // Wire Awakening callback
+    this.input.onAwaken = () => this.triggerAwakening();
+
     // ── Biome & Ground Infinite Tilemap ───────────────────────
-    this.currentBiome = randomBiome();
+    let chosenBiome: Biome;
+    if (session.stageBiome && session.stageBiome !== 'RANDOM') {
+      chosenBiome = session.stageBiome;
+    } else {
+      chosenBiome = randomBiome();
+    }
+    this.currentBiome = chosenBiome;
     this.infiniteTilemap = new InfiniteTilemap(this.currentBiome, this.groundLayer);
     this.infiniteTilemap.update(0, 0, true);
     this.particleSystem = new ParticleSystem(this.entityLayer);
@@ -233,16 +279,88 @@ export class GameScene {
       hasRunBuffs = true;
     }
 
+    // ── Apply Stage Biome Modifiers ───────────────────────────
+    if (this.currentBiome === 'FOREST_OF_DEATH') {
+      this.upgStats.chakraorbmultiplier *= 1.25;
+      setTimeout(() => {
+        this.hud.showToast(`[STAGE] Foresta della Morte: +25% Guadagno Chakra!`);
+      }, 1000);
+    } else if (this.currentBiome === 'VALLEY_OF_END') {
+      this.upgStats.ryomultiplier *= 1.50;
+      this.upgStats.chakraorbmultiplier *= 1.50;
+      setTimeout(() => {
+        this.hud.showToast(`[STAGE] Valle della Fine: Sfida Incubo (+50% Ryo & Chakra)!`);
+      }, 1000);
+    } else {
+      setTimeout(() => {
+        this.hud.showToast(`[STAGE] Villaggio della Foglia: Addestramento Standard`);
+      }, 1000);
+    }
+
     // ── Player entity ─────────────────────────────────────────
     this.player = new Player({ ...session.character, baseStats } as Character);
     this.player.hp = this.upgStats.hp;
     this.player.maxHp = this.upgStats.maxHp;
     this.entityLayer.addChild(this.player.container);
 
+    // Initial destructibles on terrain
+    this.lastDestructibleSpawnX = this.player.x;
+    this.lastDestructibleSpawnY = this.player.y;
+    this.spawnDestructiblesAround(this.player.x, this.player.y, 8);
+
     // ── Active Jutsu setup ────────────────────────────────────
     this.acquiredTools.clear();
     this.activeSynergy = null;
     this.projectileSystem = new ProjectileSystem(this.entityLayer);
+    this.projectileSystem.setOnPlayerHit(dmg => this.damagePlayer(dmg));
+
+    // ── Companion Shinobi (Support Ninja from Squad) ──────────
+    const supportId = SaveSystem.getSupportCharacterId();
+    const supportChar = supportId && supportId !== session.character.id ? getCharacterById(supportId) : null;
+    if (supportChar && SaveSystem.isCharacterUnlocked(supportChar.id)) {
+      this.companion = new CompanionShinobi(supportChar, this.player.x, this.player.y);
+      this.entityLayer.addChild(this.companion.container);
+
+      // Apply Team Synergy Bonus
+      const syn = computeTeamSynergy(session.character, supportChar);
+      if (syn.title.includes('Team 7')) {
+        this.upgStats.movespeed *= 1.15;
+        this.upgStats.maxHp = Math.round(this.upgStats.maxHp * 1.10);
+        this.upgStats.hp = this.upgStats.maxHp;
+      } else if (syn.title.includes('Uchiha')) {
+        this.upgStats.critdmg *= 1.20;
+        this.upgStats.critchance = Math.min(0.9, this.upgStats.critchance + 0.10);
+      } else if (syn.title.includes('Kage')) {
+        this.upgStats.jutsuCooldownMult *= 0.85;
+        this.upgStats.defense += 15;
+      } else if (syn.title.includes('Sannin')) {
+        this.upgStats.jutsudmg *= 1.25;
+      } else {
+        this.upgStats.jutsudmg *= 1.10;
+      }
+      setTimeout(() => {
+        this.hud.showToast(`[COMPAGNO] ${supportChar.nameIT}: ${syn.statBonusText}`);
+      }, 1800);
+    } else {
+      this.companion = undefined;
+    }
+
+    // ── Multiplayer Co-op Shinobi Partner (Player 2) ─────────
+    if (session.multiplayerMode && session.coopPartner) {
+      const isLocal = session.multiplayerMode === 'local_coop';
+      this.coopPartnerShinobi = new CoopPlayerShinobi(
+        session.coopPartner,
+        this.player.x - 45,
+        this.player.y + 20,
+        isLocal,
+      );
+      this.entityLayer.addChild(this.coopPartnerShinobi.container);
+      setTimeout(() => {
+        this.hud.showToast(`[CO-OP SHINOBI] ${session.coopPartner?.nameIT} (${isLocal ? 'Locale P2' : 'Online'})`);
+      }, 1500);
+    } else {
+      this.coopPartnerShinobi = undefined;
+    }
 
     // Initial character signature jutsu
     const charJutsuSlot = session.character.jutsuSlot;
@@ -261,6 +379,24 @@ export class GameScene {
       maxLevel: 5,
       vfxColor: session.character.assets.color,
       description: `Tecnica caratteristica di ${session.character.nameIT}`,
+      evolutionReq: {
+        statId: 'dmg_up',
+        statName: 'Chakra Concentrato (Danno)',
+        statIcon: '⚡',
+        description: 'Richiede 1 potenziamento del Danno per risvegliare la forma Plus.',
+      },
+      plusEvolution: {
+        nameIT: `${charJutsuSlot.nameIT} +`,
+        nameJP: `${charJutsuSlot.nameJP}・極`,
+        icon: '🌀+',
+        description: `Evoluzione Suprema di ${charJutsuSlot.nameIT} con potenza e raggio raddoppiati!`,
+        vfxColor: session.character.assets.color,
+        dmgMultiplier: 2.0,
+        cooldownMultiplier: 0.75,
+        bonusPierce: 3,
+        bonusRadius: 6,
+        specialEffectDescription: 'Raggio e danno raddoppiati.',
+      },
     };
 
     this.combatSlots = [
@@ -273,6 +409,8 @@ export class GameScene {
             definition: initialDef,
             level: 1,
             cooldownTimer: 0,
+            isPlus: false,
+            statRequirementMet: false,
           },
         ],
       },
@@ -296,12 +434,23 @@ export class GameScene {
     }
 
     // ── HUD ───────────────────────────────────────────────────
-    this.hud = new HUD(this.app);
+    if (this.hud) {
+      this.hud.destroy();
+    }
+    this.hud = new HUD(this.app, this.uiLayer);
     this.hud.setOnSelectSlot((idx) => this.selectSlot(idx));
+    this.hud.setOnAwaken(() => this.triggerAwakening());
+    this.hud.setOnResume(() => {
+      this.paused = false;
+    });
+    this.hud.setOnQuit(() => {
+      this.paused = false;
+      this.returnToMenu();
+    });
     this.hud.showToast(`Bioma: ${BIOME_NAMES[this.currentBiome]}`);
     if (hasRunBuffs) {
       setTimeout(() => {
-        this.hud.showToast('🍜 Buff Ichiraku & Tenten attivi per questa run!');
+        this.hud.showToast('[ICHIRAKU & TENTEN] Buff attivi per questa run!');
       }, 1800);
     }
 
@@ -326,12 +475,17 @@ export class GameScene {
     // ── Initial wave (Easy tutorial start: 3 basic Zetsu) ─────
     difficultyManager.reset();
     this.spawnWave(3, 'zetsu');
+    this.spawnDestructiblesAround(this.player.x, this.player.y, 8);
 
     // ── Game Loop ─────────────────────────────────────────────
     this.app.ticker.add(this.tick, this);
   }
 
   stop(): void {
+    this.paused = false;
+    if (this.hud) {
+      this.hud.destroy();
+    }
     this.app.ticker.remove(this.tick, this);
     audioManager.stopBGM();
     this.infiniteTilemap?.clear();
@@ -339,6 +493,11 @@ export class GameScene {
     this.groundLayer.removeChildren();
     this.uiLayer.removeChildren();
     this.virtualJoystick?.hide();
+    this.coopPartnerShinobi = undefined;
+    this.activeBossPortal = undefined;
+    this.returnPortal = undefined;
+    this.isInsideBossDimension = false;
+    this.destructibles = [];
   }
 
   // ── Virtual Joystick Setup ───────────────────────────────────
@@ -383,7 +542,7 @@ export class GameScene {
       }
       if (e.code === 'KeyM') {
         const on = audioManager.toggle();
-        this.hud.showToast(on ? '🔊 Audio ON' : '🔇 Audio OFF');
+        this.hud.showToast(on ? 'AUDIO: ATTIVO' : 'AUDIO: DISATTIVATO');
       }
     };
     window.addEventListener('keydown', this._keyHandler);
@@ -426,26 +585,57 @@ export class GameScene {
     // ── Dynamic Infinite Tilemap Chunks ───────────────────────
     this.infiniteTilemap.update(this.player.x, this.player.y);
 
+    // ── Shinobi Awakening Timer ──────────────────────────────
+    if (this.awakeningActive) {
+      this.awakeningTimer -= dt;
+      if (this.awakeningTimer <= 0) {
+        this.awakeningActive = false;
+        this.awakeningTimer = 0;
+        this.player.isAwakened = false;
+        this.hud.showToast('[RISVEGLIO] Terminato. Recupero Chakra...');
+      }
+    }
+
+    // ── Dynamic Destructible Objects ─────────────────────────
+    const dMove = Math.hypot(this.player.x - this.lastDestructibleSpawnX, this.player.y - this.lastDestructibleSpawnY);
+    if (dMove > 500) {
+      this.lastDestructibleSpawnX = this.player.x;
+      this.lastDestructibleSpawnY = this.player.y;
+      this.spawnDestructiblesAround(this.player.x, this.player.y, 4);
+    }
+
+    this.destructibles = this.destructibles.filter(d => {
+      if (d.isBroken) return false;
+      const pDist = Math.hypot(d.x - this.player.x, d.y - this.player.y);
+      if (pDist < GAME_CONFIG.PLAYER_HITBOX_RADIUS + d.radius) {
+        this.breakDestructible(d);
+        return false;
+      }
+      return true;
+    });
+
     // ── Active Slot Jutsu: Simultaneous Cooldown & Fire ───────
     const curSlot = this.combatSlots[this.activeSlotIndex];
     if (curSlot && curSlot.moves.length > 0) {
       if (curSlot.slotCooldownTimer === undefined) {
         curSlot.slotCooldownTimer = 0;
       }
-      curSlot.slotCooldownTimer -= dt;
+      const effectiveDt = this.awakeningActive ? dt * 2.0 : dt;
+      curSlot.slotCooldownTimer -= effectiveDt;
       if (curSlot.slotCooldownTimer <= 0) {
         // Fire ALL merged techniques in this slot simultaneously!
         for (const aj of curSlot.moves) {
           this.fireSpecificJutsu(aj);
         }
-        // Slot cooldown determined by minimum cooldown of moves + fusion bonus
+        // Slot cooldown determined by minimum cooldown of moves + fusion bonus + plus bonus
         const minCd = Math.min(...curSlot.moves.map(m => {
           const cdRed = Math.pow(0.90, m.level - 1);
-          return m.definition.cooldownSec * cdRed;
+          const plusCd = m.isPlus ? m.definition.plusEvolution.cooldownMultiplier : 1.0;
+          return m.definition.cooldownSec * cdRed * plusCd;
         }));
         const fusionSpeedMult = Math.pow(0.90, curSlot.moves.length - 1);
         curSlot.slotCooldownTimer = Math.max(
-          0.30,
+          0.25,
           minCd * fusionSpeedMult * this.upgStats.jutsuCooldownMult,
         );
       }
@@ -454,7 +644,17 @@ export class GameScene {
     // ── Normal Enemies ────────────────────────────────────────
     for (const enemy of this.enemies) {
       if (enemy.isDead) continue;
-      enemy.update(dt, this.player.x, this.player.y);
+      const { shootProjectile } = enemy.update(dt, this.player.x, this.player.y);
+      if (shootProjectile) {
+        this.projectileSystem.fireEnemyProjectile(
+          enemy.x,
+          enemy.y,
+          shootProjectile.angle,
+          shootProjectile.speed,
+          shootProjectile.damage,
+          shootProjectile.type,
+        );
+      }
       const dist = Math.hypot(enemy.x - this.player.x, enemy.y - this.player.y);
       if (dist < GAME_CONFIG.PLAYER_HITBOX_RADIUS + enemy.config.size * 0.8) {
         this.damagePlayer(enemy.config.damage * dt * 2);
@@ -464,7 +664,21 @@ export class GameScene {
     // ── Bosses ────────────────────────────────────────────────
     for (const boss of this.bosses) {
       if (boss.isDead) continue;
-      const { specialAttack } = boss.update(dt, this.player.x, this.player.y);
+      const { specialAttack, bossRangedProjectiles } = boss.update(dt, this.player.x, this.player.y);
+
+      // Boss signature projectiles
+      if (bossRangedProjectiles && bossRangedProjectiles.length > 0) {
+        for (const bp of bossRangedProjectiles) {
+          this.projectileSystem.fireEnemyProjectile(
+            boss.x,
+            boss.y,
+            bp.angle,
+            bp.speed,
+            bp.damage,
+            bp.type,
+          );
+        }
+      }
 
       // Boss contact damage
       const bd = Math.hypot(boss.x - this.player.x, boss.y - this.player.y);
@@ -477,7 +691,7 @@ export class GameScene {
         const sDist = Math.hypot(boss.x - this.player.x, boss.y - this.player.y);
         if (sDist < boss.config.specialAttackRadius) {
           this.damagePlayer(boss.config.specialAttackDamage);
-          this.hud.showToast(`💀 ${boss.config.nameIT}: Attacco Speciale!`);
+          this.hud.showToast(`[ATTACCO SPECIALE] ${boss.config.nameIT}!`);
           this.spawnBossShockwave(boss);
         }
       }
@@ -485,17 +699,51 @@ export class GameScene {
 
     // ── Projectile System ─────────────────────────────────────
     const allEnemies = [...this.enemies, ...this.bosses] as Enemy[];
+
+    // ── Companion Shinobi Action ──────────────────────────────
+    if (this.companion) {
+      this.companion.update(
+        dt,
+        this.player.x,
+        this.player.y,
+        allEnemies,
+        (proj) => this.projectileSystem.fireProjectile(proj),
+        (heal) => {
+          this.upgStats.hp = Math.min(this.upgStats.maxHp, this.upgStats.hp + heal);
+          this.player.hp = this.upgStats.hp;
+          this.hud.showToast(`[CURA MEDICA] +${heal} HP da ${this.companion?.character.nameIT}!`);
+        },
+      );
+    }
+
+    // ── Co-op Player Shinobi Action ──────────────────────────
+    if (this.coopPartnerShinobi) {
+      this.coopPartnerShinobi.update(
+        dt,
+        allEnemies,
+        (proj) => this.projectileSystem.fireProjectile(proj),
+      );
+    }
+
     this.projectileSystem.update(
       dt,
       this.player.x, this.player.y,
       allEnemies,
-      (enemy, dmg) => this.onEnemyHit(enemy as Enemy | Boss, dmg),
+      (enemy, dmg, isPlus) => this.onEnemyHit(enemy as Enemy | Boss, dmg, isPlus),
+      this.destructibles,
+      (d, dmg) => {
+        d.takeDamage(dmg);
+        if (d.isBroken) {
+          this.breakDestructible(d);
+        }
+      },
     );
 
     // ── Process dead enemies ──────────────────────────────────
     this.enemies = this.enemies.filter(e => {
       if (e.isDead) {
         this.totalKills++;
+        this.awakeningMeter = Math.min(100, this.awakeningMeter + 0.8);
         this.particleSystem.emitEnemyDeath(e.x, e.y, e.config.color);
         this.particleSystem.emitNinjaSmoke(e.x, e.y);
         this.spawnDrops(e.x, e.y, e.config);
@@ -508,6 +756,7 @@ export class GameScene {
 
     this.bosses = this.bosses.filter(b => {
       if (b.isDead) {
+        this.awakeningMeter = Math.min(100, this.awakeningMeter + 25);
         this.particleSystem.emitBossDeath(b.x, b.y, b.config.color, b.config.accentColor);
         this.onBossDead(b);
         this.entityLayer.removeChild(b.container);
@@ -540,39 +789,72 @@ export class GameScene {
       return true;
     });
 
+    // ── Update Spacetime Boss Portals ────────────────────────
+    if (this.activeBossPortal) {
+      this.activeBossPortal.update(dt);
+      if (this.activeBossPortal.isExpired) {
+        this.entityLayer.removeChild(this.activeBossPortal.container);
+        this.activeBossPortal = undefined;
+        this.hud.showToast('[PORTALE] Spazio-temporale collassato!');
+      } else {
+        const pDist = Math.hypot(this.activeBossPortal.x - this.player.x, this.activeBossPortal.y - this.player.y);
+        if (pDist <= this.activeBossPortal.radius + GAME_CONFIG.PLAYER_HITBOX_RADIUS) {
+          this.enterBossPortal(this.activeBossPortal);
+        }
+      }
+    }
+
+    if (this.returnPortal) {
+      this.returnPortal.update(dt);
+      const rDist = Math.hypot(this.returnPortal.x - this.player.x, this.returnPortal.y - this.player.y);
+      if (rDist <= this.returnPortal.radius + GAME_CONFIG.PLAYER_HITBOX_RADIUS) {
+        this.returnFromBossDimension();
+      }
+    }
+
     // ── Dynamic Difficulty & Enemy Spawning ────────────────────
     const diff = difficultyManager.getSnapshot(this.elapsedSec);
 
     // Announce threat tier changes
     if (diff.tierChanged && this.elapsedSec > 5) {
-      this.hud.showToast(`⚡ ALLERTA: ${diff.threatTier.nameIT}!`);
+      this.hud.showToast(`[ALLERTA] ${diff.threatTier.nameIT}!`);
       audioManager.playSFX('promotion');
     }
 
-    // Periodic invasion surge event
-    if (difficultyManager.checkSurge(this.elapsedSec)) {
+    // Periodic invasion surge event (only outside boss dimension)
+    if (!this.isInsideBossDimension && difficultyManager.checkSurge(this.elapsedSec)) {
       this.triggerSurgeEvent();
     }
 
-    // Regular wave spawn
-    this.spawnTimer += dt;
-    if (this.spawnTimer >= diff.spawnIntervalSec) {
-      this.spawnTimer = 0;
-      const activeCount = this.enemies.filter(e => !e.isDead).length;
-      const deficit = diff.enemyBudget - activeCount;
-      if (deficit > 0) {
-        const batchSize = Math.min(8, Math.max(1, Math.ceil(deficit * 0.40)));
-        this.spawnWave(batchSize);
+    // Regular wave spawn (only outside boss dimension)
+    if (!this.isInsideBossDimension) {
+      this.spawnTimer += dt;
+      if (this.spawnTimer >= diff.spawnIntervalSec) {
+        this.spawnTimer = 0;
+        const activeCount = this.enemies.filter(e => !e.isDead).length;
+        const deficit = diff.enemyBudget - activeCount;
+        if (deficit > 0) {
+          const batchSize = Math.min(8, Math.max(1, Math.ceil(deficit * 0.40)));
+          this.spawnWave(batchSize);
+        }
       }
     }
 
-    // ── Boss Scheduling ───────────────────────────────────────
-    const currentMinute = Math.floor(this.elapsedSec / 60);
-    for (const [minute, bossType] of BOSS_SCHEDULE) {
-      if (currentMinute >= minute && !this.bossMinutesSpawned.has(minute)) {
-        this.bossMinutesSpawned.add(minute);
-        this.spawnBoss(bossType, currentMinute);
+    // ── Boss Portal Scheduling (Portali Spazio-Temporali) ─────
+    if (!this.isInsideBossDimension) {
+      const currentMinute = Math.floor(this.elapsedSec / 60);
+      for (const [minute, bossType] of BOSS_SCHEDULE) {
+        if (currentMinute >= minute && !this.bossMinutesSpawned.has(minute)) {
+          this.bossMinutesSpawned.add(minute);
+          this.spawnBossPortal(bossType);
+        }
       }
+    }
+
+    // ── Victory Check (18 min survival, disabled in Endless Mode) ──────
+    if (this.elapsedSec >= 1080 && !this.gameOver && this.session.stageId !== 'stage_war') {
+      this.triggerVictory();
+      return;
     }
 
     // ── Player death ──────────────────────────────────────────
@@ -580,12 +862,20 @@ export class GameScene {
       this.gameOver = true;
       audioManager.playSFX('game_over');
       audioManager.stopBGM();
+      const grade = this.elapsedSec >= 900 ? 'A' : (this.elapsedSec >= 540 ? 'B' : (this.elapsedSec >= 240 ? 'C' : 'D'));
       SaveSystem.recordRunEnd(
         this.ryo,
         this.elapsedSec,
         this.level,
         this.totalKills,
         this.bossesDefeatedCount > 0,
+        false,
+        {
+          characterId: this.session.character.id,
+          characterName: this.session.character.nameIT,
+          stageName: this.session.stageName || (this.session.stageId === 'stage_war' ? 'Grande Guerra Ninja' : 'Foresta della Morte'),
+          grade,
+        },
       );
       SaveSystem.addFragments(this.session.character.id, this.currentFragments);
       this.gameOverScene.show(
@@ -611,13 +901,68 @@ export class GameScene {
     this.updateHUD();
   };
 
+  private triggerVictory(): void {
+    if (this.gameOver) return;
+    this.gameOver = true;
+    audioManager.playSFX('promotion');
+    audioManager.stopBGM();
+    this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+
+    const victoryRyoBonus = 3500;
+    const victoryFragments = 30;
+    const victoryScrolls = 5;
+
+    this.ryo += victoryRyoBonus;
+    this.currentFragments += victoryFragments;
+    this.scrollsEarnedInRun += victoryScrolls;
+    SaveSystem.addScrolls(victoryScrolls);
+    SaveSystem.addFragments(this.session.character.id, victoryFragments);
+
+    const grade = (this.elapsedSec >= 1080 || this.bossesDefeatedCount >= 3) ? 'S' : 'A';
+    SaveSystem.recordRunEnd(
+      this.ryo,
+      this.elapsedSec,
+      this.level,
+      this.totalKills,
+      true,
+      true, // isVictory
+      {
+        characterId: this.session.character.id,
+        characterName: this.session.character.nameIT,
+        stageName: this.session.stageName || (this.session.stageId === 'stage_war' ? 'Grande Guerra Ninja' : 'Foresta della Morte'),
+        grade,
+      },
+    );
+
+    this.hud.showToast('[VITTORIA SHINOBI] Il Villaggio della Foglia è salvo!');
+
+    this.gameOverScene.show(
+      {
+        character: this.session.character,
+        rank: this.currentRank,
+        elapsedSec: this.elapsedSec,
+        level: this.level,
+        kills: this.totalKills,
+        bossesDefeated: this.bossesDefeatedCount,
+        chakraCollected: this.chakraOrbs,
+        ryoEarned: this.ryo,
+        fragmentsEarned: Math.max(0, this.currentFragments - this.session.fragments),
+        scrollsEarned: this.scrollsEarnedInRun,
+        activeSynergyName: this.activeSynergy?.nameIT,
+        isVictory: true,
+      },
+      () => this.restart(),
+      () => this.returnToMenu(),
+    );
+  }
+
   selectSlot(idx: number): void {
     if (idx >= 0 && idx < this.combatSlots.length && idx !== this.activeSlotIndex) {
       this.activeSlotIndex = idx;
       audioManager.playSFX('button_click');
       const slot = this.combatSlots[idx];
       const names = slot.moves.map(m => m.definition.nameIT).join(' + ');
-      this.hud.showToast(`⚡ Mossa Attiva: ${names}`);
+      this.hud.showToast(`[MOSSA ATTIVA] ${names}`);
     }
   }
 
@@ -644,7 +989,7 @@ export class GameScene {
 
     audioManager.playSFX('combined_activate');
     this.particleSystem.emitLevelUp(this.player.x, this.player.y);
-    this.hud.showToast(`💥 FUSIONE RIUSCITA! Le tecniche ora sparano contemporaneamente!`);
+    this.hud.showToast('[FUSIONE RIUSCITA] Le tecniche ora sparano contemporaneamente!');
   }
 
   // ── Jutsu Fire ───────────────────────────────────────────────
@@ -658,12 +1003,14 @@ export class GameScene {
       ? findCombinedTechnique(jutsu.id, this.session.character.passiveAbility.id)
       : null;
 
+    const isPlus = !!aj.isPlus;
     const synMult = (syn && isPrimary) ? syn.dmgMultiplier : 1.0;
     const combMult = combined ? combined.dmgMultiplier : 1.0;
+    const plusMult = isPlus ? aj.definition.plusEvolution.dmgMultiplier : 1.0;
     const lvlMult = 1 + (aj.level - 1) * 0.35;
-    const rawDmg = this.upgStats.jutsudmg * jutsu.baseDmgCoeff * lvlMult * 10;
+    const rawDmg = this.upgStats.jutsudmg * jutsu.baseDmgCoeff * lvlMult * synMult * combMult * plusMult * 10;
     const isCrit = Math.random() < this.upgStats.critchance;
-    const dmg = Math.round(rawDmg * synMult * combMult * (isCrit ? this.upgStats.critdmg : 1));
+    const dmg = Math.round(rawDmg * (isCrit ? this.upgStats.critdmg : 1));
 
     const nearest = this.findNearest();
     const angle = nearest
@@ -672,18 +1019,21 @@ export class GameScene {
 
     const color = (syn && isPrimary)
       ? syn.vfxColor
-      : (combined ? combined.vfxColor : jutsu.vfxColor);
+      : (isPlus ? aj.definition.plusEvolution.vfxColor : (combined ? combined.vfxColor : jutsu.vfxColor));
 
     const effectiveBehavior = (syn && isPrimary)
       ? syn.behavior
       : (combined ? combined.behavior : jutsu.behavior);
 
-    const jName = (syn && isPrimary) ? syn.nameIT : jutsu.nameIT;
+    const jName = (syn && isPrimary) ? syn.nameIT : (isPlus ? aj.definition.plusEvolution.nameIT : jutsu.nameIT);
     const jElem = jutsu.element;
+    const extraRadius = isPlus ? aj.definition.plusEvolution.bonusRadius : 0;
+    const extraPierce = isPlus ? aj.definition.plusEvolution.bonusPierce : 0;
 
     if (effectiveBehavior === 'AreaPersistent' || effectiveBehavior === 'Explosion') {
-      this.fireGravityPulse(dmg * 1.5, 260 + (aj.level - 1) * 20, color);
-      audioManager.playSFX('combined_activate');
+      const areaRad = 260 + (aj.level - 1) * 20 + (isPlus ? 80 : 0);
+      this.fireGravityPulse(dmg * 1.5, areaRad, color, isPlus);
+      audioManager.playSFX(isPlus ? 'plus_fire' : 'combined_activate');
     } else if (effectiveBehavior === 'Beam') {
       const proj = createProjectile(
         this.player.x, this.player.y,
@@ -691,17 +1041,18 @@ export class GameScene {
         960,
         dmg * 2,
         color,
-        7 + aj.level,
-        8 + aj.level * 2,
+        7 + aj.level + extraRadius,
+        8 + aj.level * 2 + extraPierce,
         0.8,
         jElem,
         jName,
         'Beam',
+        isPlus,
       );
       this.projectileSystem.fireProjectile(proj);
-      audioManager.playSFX('jutsu_beam');
+      audioManager.playSFX(isPlus ? 'plus_fire' : 'jutsu_beam');
     } else if (effectiveBehavior === 'ProjectileOmni') {
-      const count = (syn && isPrimary) ? 16 : (8 + aj.level * 2);
+      const count = (syn && isPrimary) ? 16 : (8 + aj.level * 2 + (isPlus ? 6 : 0));
       for (let i = 0; i < count; i++) {
         const a = (i / count) * Math.PI * 2;
         const proj = createProjectile(
@@ -710,18 +1061,19 @@ export class GameScene {
           560,
           dmg,
           color,
-          8 + aj.level,
-          2 + Math.floor(aj.level / 2),
+          8 + aj.level + extraRadius,
+          2 + Math.floor(aj.level / 2) + extraPierce,
           1.6,
           jElem,
           jName,
           'ProjectileOmni',
+          isPlus,
         );
         this.projectileSystem.fireProjectile(proj);
       }
-      audioManager.playSFX('jutsu_omni');
+      audioManager.playSFX(isPlus ? 'plus_fire' : 'jutsu_omni');
     } else if (effectiveBehavior === 'ProjectileSpread') {
-      const spreadCount = (syn && isPrimary) ? 8 : (3 + aj.level);
+      const spreadCount = (syn && isPrimary) ? 8 : (3 + aj.level + (isPlus ? 2 : 0));
       const fan = 0.60;
       for (let i = 0; i < spreadCount; i++) {
         const offset = ((i / Math.max(1, spreadCount - 1)) - 0.5) * fan;
@@ -731,16 +1083,17 @@ export class GameScene {
           620,
           Math.round(dmg * 0.90),
           color,
-          8 + aj.level,
-          (syn && isPrimary) ? 4 : (1 + Math.floor(aj.level / 2)),
+          8 + aj.level + extraRadius,
+          (syn && isPrimary) ? 4 : (1 + Math.floor(aj.level / 2) + extraPierce),
           2.0,
           jElem,
           jName,
           'ProjectileSpread',
+          isPlus,
         );
         this.projectileSystem.fireProjectile(proj);
       }
-      audioManager.playSFX('jutsu_fire');
+      audioManager.playSFX(isPlus ? 'plus_fire' : 'jutsu_fire');
     } else if (effectiveBehavior === 'Orbital') {
       const proj = createProjectile(
         this.player.x, this.player.y,
@@ -748,15 +1101,16 @@ export class GameScene {
         540,
         Math.round(dmg * 1.2),
         color,
-        9,
-        3,
+        9 + extraRadius,
+        3 + extraPierce,
         1.8,
         jElem,
         jName,
         'Orbital',
+        isPlus,
       );
       this.projectileSystem.fireProjectile(proj);
-      audioManager.playSFX('jutsu_fire');
+      audioManager.playSFX(isPlus ? 'plus_fire' : 'jutsu_fire');
     } else {
       const proj = createProjectile(
         this.player.x, this.player.y,
@@ -764,19 +1118,20 @@ export class GameScene {
         540,
         dmg,
         color,
-        8 + aj.level,
-        1 + Math.floor(aj.level / 2),
+        8 + aj.level + extraRadius,
+        1 + Math.floor(aj.level / 2) + extraPierce,
         2.2,
         jElem,
         jName,
         'Projectile',
+        isPlus,
       );
       this.projectileSystem.fireProjectile(proj);
-      audioManager.playSFX('jutsu_fire');
+      audioManager.playSFX(isPlus ? 'plus_fire' : 'jutsu_fire');
     }
   }
 
-  private fireGravityPulse(dmg: number, radius: number, color: number): void {
+  private fireGravityPulse(dmg: number, radius: number, color: number, isPlus = false): void {
     // Visual shockwave
     const ring = new Graphics();
     ring.circle(0, 0, 8);
@@ -798,7 +1153,15 @@ export class GameScene {
         // Deal damage to all in radius at pulse end
         for (const e of [...this.enemies, ...this.bosses]) {
           const d = Math.hypot(e.x - this.player.x, e.y - this.player.y);
-          if (d < radius) this.onEnemyHit(e as Enemy, dmg * (1 - d / radius));
+          if (d < radius) this.onEnemyHit(e as Enemy, dmg * (1 - d / radius), isPlus);
+        }
+        for (const obj of this.destructibles) {
+          if (obj.isBroken) continue;
+          const d = Math.hypot(obj.x - this.player.x, obj.y - this.player.y);
+          if (d < radius) {
+            obj.takeDamage(dmg * (1 - d / radius));
+            if (obj.isBroken) this.breakDestructible(obj);
+          }
         }
       }
     };
@@ -807,17 +1170,21 @@ export class GameScene {
 
   // ── Hit handling ─────────────────────────────────────────────
 
-  private onEnemyHit(enemy: Enemy | Boss, damage: number): void {
+  private onEnemyHit(enemy: Enemy | Boss, damage: number, isPlus = false): void {
     const isCrit = Math.random() < this.upgStats.critchance;
     const finalDmg = isCrit ? Math.round(damage * this.upgStats.critdmg) : Math.round(damage);
     enemy.takeDamage(finalDmg);
     const screenX = enemy.x + this.world.x;
     const screenY = enemy.y + this.world.y - 20;
-    this.hud.showDamageNumber(screenX, screenY, finalDmg, isCrit);
+    this.hud.showDamageNumber(screenX, screenY, finalDmg, isCrit, isPlus);
+    if (isPlus) {
+      this.particleSystem.emitLevelUp(enemy.x, enemy.y);
+    }
     audioManager.playSFX('enemy_hit');
   }
 
   private damagePlayer(rawDmg: number): void {
+    if (this.awakeningActive) return; // Invulnerable during Awakening!
     const eff = Math.max(1, rawDmg - this.upgStats.defense);
     this.upgStats.hp = Math.max(0, this.upgStats.hp - eff);
     this.player.hp = this.upgStats.hp;
@@ -825,15 +1192,88 @@ export class GameScene {
     audioManager.playSFX('player_hurt');
   }
 
+  // ── Shinobi Awakening (Ougi / Modo Risveglio) ─────────────────
+
+  private triggerAwakening(): void {
+    if (this.awakeningActive || this.awakeningMeter < 100 || this.gameOver || this.paused) return;
+    this.awakeningMeter = 0;
+    this.awakeningActive = true;
+    this.awakeningTimer = 8.0;
+    this.player.isAwakened = true;
+    audioManager.playSFX('awakening');
+    this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+    this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+
+    // Full screen radiant golden flash
+    const flash = new Graphics();
+    flash.rect(0, 0, GAME_CONFIG.WIDTH, GAME_CONFIG.HEIGHT);
+    flash.fill({ color: 0xFDE047, alpha: 0.45 });
+    this.uiLayer.addChild(flash);
+    setTimeout(() => {
+      if (flash.parent) flash.parent.removeChild(flash);
+    }, 150);
+
+    const quote = `${this.session.character.nameIT}: Risveglio del Chakra!`;
+    this.hud.showToast(`[RISVEGLIO SUPREMO] "${quote}"`);
+  }
+
+  // ── Destructibles (Oggetti Distruttibili sul Campo) ─────────
+
+  private spawnDestructiblesAround(centerX: number, centerY: number, count = 6): void {
+    const types: DestructibleType[] = ['training_log', 'ninja_crate', 'training_log'];
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 180 + Math.random() * 550;
+      const x = centerX + Math.cos(angle) * dist;
+      const y = centerY + Math.sin(angle) * dist;
+      const t = types[Math.floor(Math.random() * types.length)];
+      const obj = new DestructibleObject(x, y, t);
+      this.destructibles.push(obj);
+      this.entityLayer.addChild(obj.container);
+    }
+  }
+
+  private breakDestructible(d: DestructibleObject): void {
+    d.isBroken = true;
+    this.entityLayer.removeChild(d.container);
+    this.particleSystem.emitEnemyDeath(d.x, d.y, 0x854D0E);
+    this.particleSystem.emitNinjaSmoke(d.x, d.y);
+    audioManager.playSFX('enemy_hit');
+
+    // Drops from destructible
+    const coin = new Collectible(
+      d.x, d.y, 'ryo_coin',
+      Math.round(25 * this.upgStats.ryomultiplier),
+      (Math.random() - 0.5) * 80,
+      (Math.random() - 0.5) * 80,
+    );
+    const orb = new Collectible(
+      d.x + 10, d.y + 10, 'chakra_orb',
+      Math.round(GAME_CONFIG.CHAKRA_ORB_BASE_VALUE * 2 * this.upgStats.chakraorbmultiplier),
+      (Math.random() - 0.5) * 80,
+      (Math.random() - 0.5) * 80,
+    );
+    this.collectibles.push(coin, orb);
+    this.entityLayer.addChild(coin.container, orb.container);
+
+    // 15% chance to drop Ichiraku Ramen or Bomb
+    if (Math.random() < 0.15) {
+      const itemType = Math.random() < 0.6 ? 'ramen' : 'bomb';
+      const special = new Collectible(
+        d.x - 10, d.y - 10, itemType, 1,
+        (Math.random() - 0.5) * 90,
+        (Math.random() - 0.5) * 90,
+      );
+      this.collectibles.push(special);
+      this.entityLayer.addChild(special.container);
+    }
+  }
+
   // ── Boss ──────────────────────────────────────────────────────
 
-  private spawnBoss(type: BossType, minute: number): void {
+  private spawnBoss(type: BossType, bx = 0, by = -140): void {
     const config = BOSS_CONFIGS[type];
-    const angle  = Math.random() * Math.PI * 2;
-    const dist   = GAME_CONFIG.ENEMY_SPAWN_RADIUS_MAX + 80;
-    const bx = this.player.x + Math.cos(angle) * dist;
-    const by = this.player.y + Math.sin(angle) * dist;
-    const boss = new Boss(bx, by, config, minute);
+    const boss = new Boss(bx, by, config, Math.floor(this.elapsedSec / 60));
     this.bosses.push(boss);
     this.entityLayer.addChild(boss.container);
     this.bossWarning.trigger(config.nameIT);
@@ -860,6 +1300,109 @@ export class GameScene {
       }
     };
     this.app.ticker.add(anim);
+  }
+
+  // ── Spacetime Boss Portals & Dimensions ─────────────────────
+
+  private spawnBossPortal(type: BossType): void {
+    if (this.activeBossPortal) {
+      this.entityLayer.removeChild(this.activeBossPortal.container);
+      this.activeBossPortal = undefined;
+    }
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 220 + Math.random() * 120;
+    const px = this.player.x + Math.cos(angle) * dist;
+    const py = this.player.y + Math.sin(angle) * dist;
+
+    this.activeBossPortal = new BossPortal(px, py, type, 60, false);
+    this.entityLayer.addChild(this.activeBossPortal.container);
+    audioManager.playSFX('boss_spawn');
+    this.hud.showToast(`[PORTALE BOSS] Conduce a ${BOSS_CONFIGS[type]?.nameIT}! (Dura 60s)`);
+  }
+
+  private enterBossPortal(portal: BossPortal): void {
+    portal.isEntered = true;
+    if (this.activeBossPortal) {
+      this.entityLayer.removeChild(this.activeBossPortal.container);
+      this.activeBossPortal = undefined;
+    }
+
+    // Save overworld position
+    this.savedOverworldX = this.player.x;
+    this.savedOverworldY = this.player.y;
+    this.savedOverworldBiome = this.currentBiome;
+    this.isInsideBossDimension = true;
+
+    // Dimensional transition flash
+    this.triggerScreenFlash(0xA855F7);
+    audioManager.playSFX('awakening');
+
+    // Clear normal mobs inside the boss dimension
+    for (const e of this.enemies) {
+      this.entityLayer.removeChild(e.container);
+    }
+    this.enemies = [];
+
+    // Switch to ominous dimension
+    this.currentBiome = 'VALLEY_OF_END';
+    this.infiniteTilemap.clear();
+    this.infiniteTilemap = new InfiniteTilemap(this.currentBiome, this.groundLayer);
+    this.infiniteTilemap.update(0, 0, true);
+
+    // Position player and companions in arena
+    this.player.x = 0;
+    this.player.y = 180;
+    if (this.companion) {
+      this.companion.x = 40;
+      this.companion.y = 180;
+    }
+    if (this.coopPartnerShinobi) {
+      this.coopPartnerShinobi.x = -40;
+      this.coopPartnerShinobi.y = 180;
+    }
+
+    // Spawn the boss in the center
+    this.spawnBoss(portal.bossType, 0, -140);
+  }
+
+  private returnFromBossDimension(): void {
+    if (this.returnPortal) {
+      this.entityLayer.removeChild(this.returnPortal.container);
+      this.returnPortal = undefined;
+    }
+    this.isInsideBossDimension = false;
+    this.triggerScreenFlash(0x10B981);
+    audioManager.playSFX('awakening');
+
+    // Restore overworld biome & infinite tilemap
+    this.currentBiome = this.savedOverworldBiome;
+    this.infiniteTilemap.clear();
+    this.infiniteTilemap = new InfiniteTilemap(this.currentBiome, this.groundLayer);
+    this.infiniteTilemap.update(this.savedOverworldX, this.savedOverworldY, true);
+
+    // Teleport player back to overworld position
+    this.player.x = this.savedOverworldX;
+    this.player.y = this.savedOverworldY;
+    if (this.companion) {
+      this.companion.x = this.savedOverworldX + 30;
+      this.companion.y = this.savedOverworldY + 30;
+    }
+    if (this.coopPartnerShinobi) {
+      this.coopPartnerShinobi.x = this.savedOverworldX - 30;
+      this.coopPartnerShinobi.y = this.savedOverworldY - 30;
+    }
+
+    this.hud.showToast('[RITORNO] Mondo Ninja salvato! Boss sconfitto!');
+  }
+
+  private triggerScreenFlash(colorHex: number): void {
+    const flash = new Graphics();
+    flash.rect(0, 0, GAME_CONFIG.WIDTH, GAME_CONFIG.HEIGHT);
+    flash.fill({ color: colorHex, alpha: 0.55 });
+    this.uiLayer.addChild(flash);
+    setTimeout(() => {
+      if (flash.parent) flash.parent.removeChild(flash);
+    }, 180);
   }
 
   private onBossDead(boss: Boss): void {
@@ -892,8 +1435,26 @@ export class GameScene {
     // Fragment & Scroll drop
     this.currentFragments += boss.config.fragments;
     SaveSystem.addScrolls(1);
-    this.hud.showToast(`📜 +1 Rotolo di Evocazione da ${boss.config.nameIT}!`);
+    this.hud.showToast(`[RICOMPENSA] +1 Rotolo di Evocazione da ${boss.config.nameIT}!`);
     this.hud.showToast(`✦ +${boss.config.fragments} Frammenti da ${boss.config.nameIT}!`);
+
+    // Spawn return portal if inside boss dimension
+    if (this.isInsideBossDimension) {
+      this.returnPortal = new BossPortal(boss.x, boss.y, boss.config.type, 9999, true);
+      this.entityLayer.addChild(this.returnPortal.container);
+      this.hud.showToast('[BOSS SCONFITTO] Raggiungi il Portale di Ritorno!');
+    }
+
+    // ── Final Boss Ten Tails Defeated: Trigger Shinobi Victory ──
+    if (boss.config.type === 'ten_tails') {
+      this.hud.showToast('[VITTORIA LEGGENDARIA] JŪBI SCONFITTO! IL MONDO NINJA È SALVO!');
+      setTimeout(() => {
+        if (!this.gameOver) {
+          this.triggerVictory();
+        }
+      }, 1500);
+      return;
+    }
 
     // ── Boss Defeated: Trigger Jutsu Fusion Modal if player has >= 2 slots ──
     if (this.combatSlots.length >= 2) {
@@ -968,6 +1529,7 @@ export class GameScene {
     if (c.type === 'chakra_orb') {
       this.chakraOrbs += c.value;
       this.xp += c.value;
+      this.awakeningMeter = Math.min(100, this.awakeningMeter + 0.4);
       this.particleSystem.emitChakraCollect(c.x, c.y, c.value);
       audioManager.playSFX('collect_orb');
       this.checkLevelUp();
@@ -987,7 +1549,7 @@ export class GameScene {
   private triggerBombExplosion(originX: number, originY: number): void {
     audioManager.playSFX('bomb_explode');
     this.particleSystem.emitBombExplosion(originX, originY);
-    this.hud.showToast('💥 CARTA BOMBA! Esplosione devastante!');
+    this.hud.showToast('[CARTA BOMBA] Esplosione devastante!');
 
     // Eliminate all active normal enemies on map with explosion VFX and drops
     const enemiesToKill = [...this.enemies];
@@ -1020,7 +1582,7 @@ export class GameScene {
   private triggerMagnetVacuum(): void {
     audioManager.playSFX('magnet_pickup');
     this.particleSystem.emitMagnetPulse(this.player.x, this.player.y);
-    this.hud.showToast('🧲 SIGILLO MAGNETICO! Tutti gli orbi attratti!');
+    this.hud.showToast('[SIGILLO MAGNETICO] Tutti gli orbi attratti!');
 
     for (const item of this.collectibles) {
       if (!item.collected) {
@@ -1043,7 +1605,7 @@ export class GameScene {
     const screenX = this.player.x + this.world.x;
     const screenY = this.player.y + this.world.y - 30;
     this.hud.showHealNumber(screenX, screenY, actualHealed > 0 ? actualHealed : healAmount);
-    this.hud.showToast(`🍜 RAMEN DI ICHIRAKU! +${actualHealed > 0 ? actualHealed : healAmount} HP!`);
+    this.hud.showToast(`[RAMEN ICHIRAKU] +${actualHealed > 0 ? actualHealed : healAmount} HP!`);
   }
 
   private checkLevelUp(): void {
@@ -1055,23 +1617,44 @@ export class GameScene {
       this.hud.showToast(`⬆ Livello ${this.level}!`);
       this.particleSystem.emitLevelUp(this.player.x, this.player.y);
 
-      const options = this.generateLevelUpOptions();
-      this.levelUpPanel.show(this.level, (opt) => {
-        opt.apply(this.upgStats);
-        // Sync player HP
-        this.player.hp    = this.upgStats.hp;
-        this.player.maxHp = this.upgStats.maxHp;
-        // Update orbitals if stats changed
-        for (const s of this.combatSlots) {
-          for (const aj of s.moves) {
-            if (aj.definition.behavior === 'Orbital') {
-              const orbDmg = Math.round(this.upgStats.jutsudmg * aj.definition.baseDmgCoeff * 10);
-              const orbs = createOrbitalProjectiles(this.player.x, this.player.y, 3, orbDmg, aj.definition.vfxColor);
-              this.projectileSystem.setOrbitals(orbs);
+      const showLevelModal = () => {
+        const options = this.generateLevelUpOptions();
+        const rerollCost = 100;
+        const canReroll = this.ryo >= rerollCost;
+
+        this.levelUpPanel.show(
+          this.level,
+          (opt) => {
+            opt.apply(this.upgStats);
+            // Sync player HP
+            this.player.hp    = this.upgStats.hp;
+            this.player.maxHp = this.upgStats.maxHp;
+            // Update orbitals if stats changed
+            for (const s of this.combatSlots) {
+              for (const aj of s.moves) {
+                if (aj.definition.behavior === 'Orbital') {
+                  const orbDmg = Math.round(this.upgStats.jutsudmg * aj.definition.baseDmgCoeff * 10);
+                  const orbs = createOrbitalProjectiles(this.player.x, this.player.y, 3, orbDmg, aj.definition.vfxColor);
+                  this.projectileSystem.setOrbitals(orbs);
+                }
+              }
             }
-          }
-        }
-      }, options);
+          },
+          options,
+          () => {
+            if (this.ryo >= rerollCost) {
+              this.ryo -= rerollCost;
+              audioManager.playSFX('button_click');
+              this.hud.showToast(`[REROLL] Eseguito (-${rerollCost} ¥)`);
+              showLevelModal();
+            }
+          },
+          rerollCost,
+          canReroll,
+        );
+      };
+
+      showLevelModal();
     }
   }
 
@@ -1091,12 +1674,38 @@ export class GameScene {
     }
     const availableNewJutsu = getAvailableJutsuForCharacter(this.session.character, currentLearnedIds);
 
+    // ── Check if any Plus (+) Evolution is ready to be awakened! ──
+    const readyPlusEvolutions = allMoves.filter(m => m.level === 5 && m.statRequirementMet && !m.isPlus);
+    let addedJutsuOption = false;
+
+    if (readyPlusEvolutions.length > 0) {
+      const targetPlus = readyPlusEvolutions[0];
+      options.push({
+        id: `plus_evolve_${targetPlus.definition.id}`,
+        icon: targetPlus.definition.plusEvolution.icon,
+        title: targetPlus.definition.plusEvolution.nameIT,
+        description: `${targetPlus.definition.plusEvolution.description} [${targetPlus.definition.element} • Danno ×${(targetPlus.definition.baseDmgCoeff * targetPlus.definition.plusEvolution.dmgMultiplier).toFixed(1)}]`,
+        color: 0xF59E0B,
+        isPlusEvolution: true,
+        type: 'plus_evolution',
+        tag: '✦ EVOLUZIONE PLUS (+) ✦',
+        levelText: '✦ PLUS ✦',
+        apply: () => {
+          targetPlus.isPlus = true;
+          SaveSystem.recordPlusEvolution();
+          audioManager.playSFX('plus_evolve');
+          this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+          this.hud.showToast(`[EVOLUZIONE PLUS] Risvegliata: ${targetPlus.definition.plusEvolution.nameIT}!`);
+        },
+      });
+      addedJutsuOption = true;
+    }
+
     // Check if a synergy can be awakened
     const primaryJutsu = this.combatSlots[0]?.moves[0]?.definition;
     const candidateRecipe = primaryJutsu ? findAvailableSynergyForJutsu(primaryJutsu.id, primaryJutsu.nameIT) : null;
-    let addedJutsuOption = false;
 
-    if (candidateRecipe && !this.activeSynergy) {
+    if (!addedJutsuOption && candidateRecipe && !this.activeSynergy) {
       const hasRequiredTool = this.acquiredTools.has(candidateRecipe.requiredToolId);
       const isHighLevel = (this.combatSlots[0]?.moves[0]?.level ?? 1) >= 3;
       if (hasRequiredTool && isHighLevel) {
@@ -1136,6 +1745,8 @@ export class GameScene {
               definition: nextJutsuDef,
               level: 1,
               cooldownTimer: 0.2,
+              isPlus: false,
+              statRequirementMet: false,
             };
             this.combatSlots.push({
               id: `slot_${this.combatSlots.length}`,
@@ -1148,11 +1759,11 @@ export class GameScene {
               const orbs = createOrbitalProjectiles(this.player.x, this.player.y, 3, orbDmg, nextJutsuDef.vfxColor);
               this.projectileSystem.setOrbitals(orbs);
             }
-            this.hud.showToast(`🌀 Nuova Mossa nello Slot #${this.combatSlots.length}: ${nextJutsuDef.nameIT}!`);
+            this.hud.showToast(`[NUOVA MOSSA] Slot #${this.combatSlots.length}: ${nextJutsuDef.nameIT}!`);
           },
         });
       } else {
-        const upgradable = allMoves.filter(a => a.level < a.definition.maxLevel);
+        const upgradable = allMoves.filter(a => a.level < a.definition.maxLevel && !a.isPlus);
         if (upgradable.length > 0) {
           const targetJutsu = upgradable[0];
           const nextLvl = targetJutsu.level + 1;
@@ -1160,15 +1771,22 @@ export class GameScene {
             id: `jutsu_lvl_${targetJutsu.definition.id}`,
             icon: targetJutsu.definition.icon,
             title: `${targetJutsu.definition.nameIT} (Lv. ${nextLvl})`,
-            description: `Potenzia la tecnica: +35% Danno, +raggio d'azione e -10% Cooldown. (Livello ${nextLvl}/5)`,
+            description: nextLvl === 5
+              ? `Potenzia a Livello Massimo (Lv. 5/5): +35% Danno. Sbloccherà il requisito per la forma PLUS (+)!`
+              : `Potenzia la tecnica: +35% Danno, +raggio d'azione e -10% Cooldown. (Livello ${nextLvl}/5)`,
             color: targetJutsu.definition.vfxColor,
             type: 'jutsu_level',
-            tag: '🌀 POTENZIAMENTO MOSSA',
+            tag: '✦ POTENZIAMENTO MOSSA',
             levelText: `Lv. ${nextLvl}/5`,
             apply: (stats) => {
               targetJutsu.level++;
               stats.jutsudmg *= 1.15;
-              this.hud.showToast(`🌀 ${targetJutsu.definition.nameIT} potenziato a Livello ${targetJutsu.level}!`);
+              if (targetJutsu.level === 5) {
+                const req = targetJutsu.definition.evolutionReq;
+                this.hud.showToast(`[JUTSU MAX] ${targetJutsu.definition.nameIT} Lv. 5! Potenzia "${req.statName}" per forma PLUS (+)`);
+              } else {
+                this.hud.showToast(`[JUTSU UPGRADE] ${targetJutsu.definition.nameIT} Livello ${targetJutsu.level}/5!`);
+              }
             },
           });
         } else {
@@ -1179,11 +1797,11 @@ export class GameScene {
             description: '+40% Danno a tutte le mosse Jutsu possedute',
             color: 0x38BDF8,
             type: 'jutsu_level',
-            tag: '🌀 MAESTRIA JUTSU',
+            tag: '✦ MAESTRIA JUTSU',
             levelText: 'MAX',
             apply: (stats) => {
               stats.jutsudmg *= 1.40;
-              this.hud.showToast('⚡ Maestria Jutsu: Danno aumentato del 40%!');
+              this.hud.showToast('[MAESTRIA JUTSU] Danno aumentato del 40%!');
             },
           });
         }
@@ -1212,12 +1830,12 @@ export class GameScene {
         description: `${tool.description} [${tool.statBonusText}]${isSynComponent ? ' ✦ Compatibile con Sinergia!' : ''}`,
         color: tool.color,
         type: 'ninja_tool',
-        tag: isSynComponent ? '✦ SINERGIA COMPATIBILE' : '🗡️ STRUMENTO NINJA',
+        tag: isSynComponent ? '✦ SINERGIA COMPATIBILE' : '✦ STRUMENTO NINJA',
         levelText: `Lv. ${nextLvl}/${tool.maxLevel}`,
         apply: (stats) => {
           this.acquiredTools.set(tool.id, nextLvl);
           tool.apply(stats, nextLvl);
-          this.hud.showToast(`🗡 ${tool.nameIT} Livello ${nextLvl}!`);
+          this.hud.showToast(`[STRUMENTO NINJA] ${tool.nameIT} Livello ${nextLvl}!`);
         },
       });
     } else {
@@ -1228,28 +1846,79 @@ export class GameScene {
         description: '+25% Difesa e +20% Velocità di Raccolta Chakra',
         color: 0xEA580C,
         type: 'ninja_tool',
-        tag: '🗡️ STRUMENTO NINJA',
+        tag: '✦ STRUMENTO NINJA',
         levelText: 'MAX',
         apply: (stats) => {
           stats.defense += 25;
           stats.collectradius += 40;
-          this.hud.showToast('🎒 Difesa e Raccolta potenziate!');
+          this.hud.showToast('[ZAINO TATTICO] Difesa e Raccolta potenziate!');
         },
       });
     }
 
-    // ── OPZIONE 3: POTENZIAMENTO DI STATS ───────────────────
-    const statPool = [...UPGRADE_POOL];
-    const rndIdx = Math.floor(Math.random() * statPool.length);
-    const chosenStat = statPool[rndIdx];
-    options.push({
-      ...chosenStat,
-      tag: '⚡ POTENZIAMENTO STATISTICHE',
-      type: 'stat',
-      levelText: '+BUFF',
-    });
+    // ── OPZIONE 3: POTENZIAMENTO DI STATS (Con supporto Requisiti Evoluzione +) ──
+    const waitingForStat = allMoves.filter(m => m.level === 5 && !m.statRequirementMet && !m.isPlus);
+    let chosenStat: UpgradeOption;
+    let isReqStat = false;
+    let reqMoveName = '';
+
+    if (waitingForStat.length > 0) {
+      const targetReq = waitingForStat[0].definition.evolutionReq;
+      const matching = UPGRADE_POOL.find(s => s.id === targetReq.statId);
+      if (matching) {
+        chosenStat = matching;
+        isReqStat = true;
+        reqMoveName = waitingForStat[0].definition.nameIT;
+      } else {
+        chosenStat = UPGRADE_POOL[Math.floor(Math.random() * UPGRADE_POOL.length)];
+      }
+    } else {
+      chosenStat = UPGRADE_POOL[Math.floor(Math.random() * UPGRADE_POOL.length)];
+    }
+
+    if (isReqStat) {
+      options.push({
+        ...chosenStat,
+        title: `${chosenStat.title} (Requisito)`,
+        description: `${chosenStat.description} • Soddisfa il requisito per evolvere "${reqMoveName}" in forma PLUS (+)!`,
+        color: 0xF59E0B,
+        tag: `✦ SBLOCCA ${reqMoveName.toUpperCase()} + ✦`,
+        type: 'stat',
+        levelText: '✦ SBLOCCA + ✦',
+        apply: (stats) => {
+          chosenStat.apply(stats);
+          this.onStatChosen(chosenStat.id);
+        },
+      });
+    } else {
+      options.push({
+        ...chosenStat,
+        tag: '✦ POTENZIAMENTO STATISTICHE',
+        type: 'stat',
+        levelText: '+BUFF',
+        apply: (stats) => {
+          chosenStat.apply(stats);
+          this.onStatChosen(chosenStat.id);
+        },
+      });
+    }
 
     return options;
+  }
+
+  private onStatChosen(statId: string): void {
+    for (const slot of this.combatSlots) {
+      for (const aj of slot.moves) {
+        if (aj.level === 5 && !aj.isPlus && !aj.statRequirementMet) {
+          if (aj.definition.evolutionReq?.statId === statId) {
+            aj.statRequirementMet = true;
+            audioManager.playSFX('plus_evolve');
+            this.particleSystem.emitLevelUp(this.player.x, this.player.y);
+            this.hud.showToast(`✨ REQUISITO SODDISFATTO! "${aj.definition.nameIT} +" è ora sbloccato per il prossimo Level Up!`);
+          }
+        }
+      }
+    }
   }
 
   private activateSynergy(recipe: SynergyRecipe): void {
@@ -1344,7 +2013,7 @@ export class GameScene {
 
   private triggerSurgeEvent(): void {
     const diff = difficultyManager.getSnapshot(this.elapsedSec);
-    this.hud.showToast(`⚡ ONDA D'INVASIONE IN ARRIVO!`);
+    this.hud.showToast("[ONDA D'INVASIONE] In arrivo!");
     audioManager.playSFX('boss_spawn');
 
     const count = Math.min(14, 6 + Math.floor(diff.minute * 2));
@@ -1390,6 +2059,24 @@ export class GameScene {
   private updateHUD(): void {
     const xpToNext = XP_PER_LEVEL[Math.min(this.level, XP_PER_LEVEL.length - 1)] ?? 9999;
     const diff = difficultyManager.getSnapshot(this.elapsedSec);
+
+    let portalInfo: { screenX: number; screenY: number; dist: number; timeLeft: number; bossName: string; isReturn: boolean } | undefined;
+    const targetPortal = this.activeBossPortal || this.returnPortal;
+    if (targetPortal) {
+      const screenX = targetPortal.x + this.world.x;
+      const screenY = targetPortal.y + this.world.y;
+      const dist = Math.hypot(targetPortal.x - this.player.x, targetPortal.y - this.player.y);
+      const bossConfig = BOSS_CONFIGS[targetPortal.bossType];
+      portalInfo = {
+        screenX,
+        screenY,
+        dist,
+        timeLeft: targetPortal.durationRemaining,
+        bossName: bossConfig?.nameIT ?? 'Boss',
+        isReturn: targetPortal.isReturnPortal,
+      };
+    }
+
     this.hud.update({
       hp:            this.upgStats.hp,
       maxHp:         this.upgStats.maxHp,
@@ -1408,15 +2095,36 @@ export class GameScene {
       inputSource:   this.input.lastSource,
       threatBadge:   diff.threatTier.badgeText,
       threatColor:   diff.threatTier.color,
+      portalInfo,
+      awakeningMeter:        this.awakeningMeter,
+      awakeningActive:       this.awakeningActive,
+      awakeningDurationLeft: this.awakeningTimer,
       slots:         this.combatSlots.map((s, i) => ({
         id: s.id,
         moves: s.moves.map(m => ({
-          icon: m.definition.icon,
-          name: m.definition.nameIT,
+          icon: m.isPlus ? m.definition.plusEvolution.icon : m.definition.icon,
+          name: m.isPlus ? m.definition.plusEvolution.nameIT : m.definition.nameIT,
           level: m.level,
-          color: m.definition.vfxColor,
+          color: m.isPlus ? 0xF59E0B : m.definition.vfxColor,
+          isPlus: m.isPlus,
         })),
         isActive: i === this.activeSlotIndex,
+      })),
+      activeJutsu:   this.combatSlots.flatMap(s => s.moves).map(m => ({
+        icon: m.isPlus ? m.definition.plusEvolution.icon : m.definition.icon,
+        name: m.isPlus ? m.definition.plusEvolution.nameIT : m.definition.nameIT,
+        level: m.level,
+        isPlus: m.isPlus,
+      })),
+      jutsuStatuses: this.combatSlots.flatMap(s => s.moves).map(m => ({
+        id: m.definition.id,
+        name: m.isPlus ? m.definition.plusEvolution.nameIT : m.definition.nameIT,
+        icon: m.isPlus ? m.definition.plusEvolution.icon : m.definition.icon,
+        level: m.level,
+        isPlus: !!m.isPlus,
+        statRequirementMet: !!m.statRequirementMet,
+        reqStatName: m.definition.evolutionReq?.statName || 'Danno',
+        reqStatIcon: m.definition.evolutionReq?.statIcon || '⚡',
       })),
       activeTools:   Array.from(this.acquiredTools.entries()).map(([id, lvl]) => {
         const tool = NINJA_TOOLS.find(t => t.id === id);

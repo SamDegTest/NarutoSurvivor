@@ -1,4 +1,5 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { GamepadMenuNavigator } from '../controls/GamepadMenuNavigator';
 
 // ============================================================
 //  NarutoSurvivor — Generic Themed Info Modal
@@ -31,6 +32,7 @@ export class GenericInfoModal {
   private subtitleText!: Text;
   private itemsContainer!: Container;
   private modalBg!: Graphics;
+  private closeBtn!: Container;
 
   constructor(parentStage: Container, W: number, H: number) {
     this.W = W;
@@ -81,24 +83,24 @@ export class GenericInfoModal {
     this.container.addChild(this.subtitleText);
 
     // Close button
-    const closeBtn = new Container();
-    closeBtn.eventMode = 'static';
-    closeBtn.cursor = 'pointer';
-    closeBtn.x = modalX + modalW - 48;
-    closeBtn.y = modalY + 18;
+    this.closeBtn = new Container();
+    this.closeBtn.eventMode = 'static';
+    this.closeBtn.cursor = 'pointer';
+    this.closeBtn.x = modalX + modalW - 48;
+    this.closeBtn.y = modalY + 18;
     const closeBg = new Graphics();
     closeBg.roundRect(0, 0, 32, 32, 6);
     closeBg.fill({ color: 0x374151 });
-    closeBtn.addChild(closeBg);
+    this.closeBtn.addChild(closeBg);
     const closeTxt = makeText('✕', 16, 0xFFFFFF, true);
     closeTxt.anchor.set(0.5);
     closeTxt.x = 16; closeTxt.y = 16;
-    closeBtn.addChild(closeTxt);
-    closeBtn.on('pointerdown', (e) => {
+    this.closeBtn.addChild(closeTxt);
+    this.closeBtn.on('pointerdown', (e) => {
       e.stopPropagation();
       this.hide();
     });
-    this.container.addChild(closeBtn);
+    this.container.addChild(this.closeBtn);
 
     // Items list
     this.itemsContainer = new Container();
@@ -152,9 +154,22 @@ export class GenericInfoModal {
     });
 
     this.container.visible = true;
+
+    GamepadMenuNavigator.get()?.pushContext({
+      id: 'generic_info_modal',
+      items: [
+        {
+          container: this.closeBtn,
+          onSelect: () => this.hide(),
+        },
+      ],
+      selectedIndex: 0,
+      onCancel: () => this.hide(),
+    });
   }
 
   hide(): void {
     this.container.visible = false;
+    GamepadMenuNavigator.get()?.popContext('generic_info_modal');
   }
 }

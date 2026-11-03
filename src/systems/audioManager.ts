@@ -22,7 +22,10 @@ export type SFXKind =
   | 'button_click'
   | 'bomb_explode'
   | 'magnet_pickup'
-  | 'ramen_heal';
+  | 'ramen_heal'
+  | 'plus_evolve'
+  | 'plus_fire'
+  | 'awakening';
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
@@ -87,6 +90,9 @@ export class AudioManager {
       case 'bomb_explode':    this.synth_bombExplode(ctx); break;
       case 'magnet_pickup':   this.synth_magnet(ctx); break;
       case 'ramen_heal':      this.synth_heal(ctx); break;
+      case 'plus_evolve':     this.synth_plusEvolve(ctx); break;
+      case 'plus_fire':       this.synth_plusFire(ctx); break;
+      case 'awakening':       this.synth_awakening(ctx); break;
     }
   }
 
@@ -293,6 +299,41 @@ export class AudioManager {
     const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
     notes.forEach((freq, idx) => {
       this.osc(ctx, 'sine', freq, t + idx * 0.06, t + idx * 0.06 + 0.25, 0.22);
+    });
+  }
+
+  private synth_plusEvolve(ctx: AudioContext): void {
+    const t = ctx.currentTime;
+    // Radiant golden fanfare arpeggio
+    const freqs = [440, 554.37, 659.25, 880, 1108.73, 1318.51, 1760];
+    freqs.forEach((f, i) => {
+      this.osc(ctx, 'triangle', f, t + i * 0.06, t + i * 0.06 + 0.35, 0.22);
+      this.osc(ctx, 'sine', f * 1.5, t + i * 0.06 + 0.02, t + i * 0.06 + 0.28, 0.12);
+    });
+    this.noise(ctx, 0.6, 0.18, 5000);
+  }
+
+  private synth_plusFire(ctx: AudioContext): void {
+    const t = ctx.currentTime;
+    // Heavy punchy bass thump + celestial chime
+    this.osc(ctx, 'sawtooth', 140, t, t + 0.16, 0.35);
+    this.osc(ctx, 'sine', 70, t, t + 0.25, 0.40);
+    this.osc(ctx, 'triangle', 1320, t + 0.02, t + 0.18, 0.25);
+    this.osc(ctx, 'sine', 2093, t + 0.04, t + 0.22, 0.18);
+    this.noise(ctx, 0.12, 0.15, 3200);
+  }
+
+  private synth_awakening(ctx: AudioContext): void {
+    const t = ctx.currentTime;
+    // Deep thunder explosion + soaring ascending fifths fanfare
+    this.noise(ctx, 0.7, 0.4, 250);
+    this.osc(ctx, 'sawtooth', 85, t, t + 0.6, 0.45);
+    this.osc(ctx, 'sine', 55, t, t + 0.8, 0.50);
+
+    const fanfare = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50, 1318.51];
+    fanfare.forEach((f, i) => {
+      this.osc(ctx, 'triangle', f, t + i * 0.05, t + i * 0.05 + 0.4, 0.28);
+      this.osc(ctx, 'sine', f * 2, t + i * 0.05 + 0.02, t + i * 0.05 + 0.35, 0.15);
     });
   }
 }

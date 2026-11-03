@@ -2,6 +2,7 @@ import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { SaveSystem } from '../systems/saveSystem';
 import { audioManager } from '../systems/audioManager';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon } from '../rendering/IconManager';
 
 // ============================================================
 //  NarutoSurvivor — Permanent Upgrades Modal (Albero Talenti)
@@ -63,12 +64,16 @@ export class UpgradesModal {
     modalBg.stroke({ color: 0x10B981, width: 2, alpha: 0.6 });
     this.container.addChild(modalBg);
 
-    // Header
-    const title = makeText('⬆  TALENTI NINJA PERMANENTI (UPGRADES)', 24, 0x10B981, true);
+    // Header with Naruto talent icon
+    const titleBox = new Container();
+    const titleIcon = createNarutoIcon('upgrades', 30);
+    titleIcon.x = -260; titleIcon.y = 14;
+    const title = makeText('TALENTI NINJA PERMANENTI (UPGRADES)', 24, 0x10B981, true);
     title.anchor.set(0.5, 0);
-    title.x = W / 2;
-    title.y = modalY + 22;
-    this.container.addChild(title);
+    titleBox.addChild(titleIcon, title);
+    titleBox.x = W / 2;
+    titleBox.y = modalY + 22;
+    this.container.addChild(titleBox);
 
     const sub = makeText('Potenzia in modo permanente le statistiche di base di tutti i tuoi shinobi usando i Ryo', 13, 0x9CA3AF);
     sub.anchor.set(0.5, 0);
@@ -76,11 +81,15 @@ export class UpgradesModal {
     sub.y = modalY + 56;
     this.container.addChild(sub);
 
+    const ryoBox = new Container();
+    const ryoIc = createNarutoIcon('ryo', 20);
+    ryoIc.x = -110; ryoIc.y = 10;
     this.ryoText = makeText('', 14, 0xFBBF24, true);
     this.ryoText.anchor.set(0.5, 0);
-    this.ryoText.x = W / 2;
-    this.ryoText.y = modalY + 80;
-    this.container.addChild(this.ryoText);
+    ryoBox.addChild(ryoIc, this.ryoText);
+    ryoBox.x = W / 2;
+    ryoBox.y = modalY + 80;
+    this.container.addChild(ryoBox);
 
     // Close Button
     const closeBtn = new Container();
@@ -114,35 +123,31 @@ export class UpgradesModal {
   private renderUpgrades(): void {
     this.listContainer.removeChildren();
     const profile = SaveSystem.getProfile();
-    this.ryoText.text = `💰 Ryo Disponibili: ¥ ${profile.ryo.toLocaleString()}`;
+    this.ryoText.text = `Ryo Disponibili: ¥ ${profile.ryo.toLocaleString()}`;
 
     const UPGRADE_DATA = [
       {
         key: 'hpLevel' as const,
         name: 'Forza Vitale Uzumaki (HP)',
         desc: '+10% Punti Vita massimi a ogni partita',
-        icon: '❤️',
         baseCost: 250,
       },
       {
         key: 'dmgLevel' as const,
         name: 'Controllo del Chakra (Danno Jutsu)',
         desc: '+8% Danno di tutti i Jutsu ed elementi',
-        icon: '⚡',
         baseCost: 350,
       },
       {
         key: 'speedLevel' as const,
         name: 'Passo Istantaneo Shunshin (Velocità)',
         desc: '+5% Velocità di movimento',
-        icon: '👟',
         baseCost: 300,
       },
       {
         key: 'ryoLevel' as const,
         name: 'Negoziazione delle Missioni (Ryo ×)',
         desc: '+12% Ryo guadagnati sconfiggendo i nemici',
-        icon: '🪙',
         baseCost: 400,
       },
     ];
@@ -164,17 +169,17 @@ export class UpgradesModal {
       bg.stroke({ color: 0x374151, width: 1.5 });
       row.addChild(bg);
 
-      // Icon & Name
-      const icon = makeText(upg.icon, 24, 0xFFFFFF);
-      icon.x = 20; icon.y = 16;
+      // Authentic Naruto Icon Badge
+      const icon = createNarutoIcon(upg.key, 44);
+      icon.x = 42; icon.y = 39;
       row.addChild(icon);
 
       const title = makeText(`${upg.name}  (Lv. ${curLevel})`, 15, 0xFFFFFF, true);
-      title.x = 64; title.y = 16;
+      title.x = 76; title.y = 16;
       row.addChild(title);
 
       const desc = makeText(upg.desc, 12, 0x9CA3AF);
-      desc.x = 64; desc.y = 42;
+      desc.x = 76; desc.y = 44;
       row.addChild(desc);
 
       // Upgrade Button

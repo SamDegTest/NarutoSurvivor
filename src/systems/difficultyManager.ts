@@ -18,7 +18,7 @@ export const THREAT_TIERS: ThreatTier[] = [
     nameIT: 'Bassa (Apprendista)',
     minSec: 0,
     maxSec: 90,
-    badgeText: 'BASSA 🟢',
+    badgeText: 'BASSA [RANGO-D]',
     color: 0x22C55E, // Green
   },
   {
@@ -26,7 +26,7 @@ export const THREAT_TIERS: ThreatTier[] = [
     nameIT: 'Moderata (Genin)',
     minSec: 90,
     maxSec: 180,
-    badgeText: 'MODERATA 🟡',
+    badgeText: 'MODERATA [RANGO-C]',
     color: 0xEAB308, // Yellow
   },
   {
@@ -34,7 +34,7 @@ export const THREAT_TIERS: ThreatTier[] = [
     nameIT: 'Elevata (Chūnin)',
     minSec: 180,
     maxSec: 360,
-    badgeText: 'ELEVATA 🟠',
+    badgeText: 'ELEVATA [RANGO-B]',
     color: 0xF97316, // Orange
   },
   {
@@ -42,7 +42,7 @@ export const THREAT_TIERS: ThreatTier[] = [
     nameIT: 'Pericolosa (Jōnin)',
     minSec: 360,
     maxSec: 600,
-    badgeText: 'PERICOLOSA 🔴',
+    badgeText: 'PERICOLOSA [RANGO-A]',
     color: 0xEF4444, // Red
   },
   {
@@ -50,7 +50,7 @@ export const THREAT_TIERS: ThreatTier[] = [
     nameIT: 'Estrema (Anbu / Sannin)',
     minSec: 600,
     maxSec: 900,
-    badgeText: 'ESTREMA 🟣',
+    badgeText: 'ESTREMA [RANGO-S]',
     color: 0xA855F7, // Purple
   },
   {
@@ -58,7 +58,7 @@ export const THREAT_TIERS: ThreatTier[] = [
     nameIT: 'Apocalisse (Kage / Shinobi War)',
     minSec: 900,
     maxSec: Infinity,
-    badgeText: 'APOCALISSE ☠️',
+    badgeText: 'APOCALISSE [JŪBI-WAR]',
     color: 0xEC4899, // Magenta/Crimson
   },
 ];

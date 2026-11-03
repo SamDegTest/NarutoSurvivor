@@ -6,6 +6,7 @@ import { Container, Graphics, Text, TextStyle, Application } from 'pixi.js';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { renderStars } from '../systems/promotionSystem';
 import { GamepadMenuNavigator } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon } from '../rendering/IconManager';
 import type { Character, StarRank } from '../types/character';
 
 export interface RunSummaryData {
@@ -97,12 +98,16 @@ export class GameOverScene {
     modal.addChild(watermark);
 
     // 3. Header Banner
-    const bannerTitle = isVictory ? '🏆 VITTORIA SHINOBI' : '💀 MISSIONE TERMINATA';
-    const title = textLabel(bannerTitle, 28, themeColor, true);
+    const bannerBox = new Container();
+    const bannerIcon = createNarutoIcon(isVictory ? 'leaderboard' : 'codex', 32);
+    bannerIcon.x = -170; bannerIcon.y = 16;
+    const bannerTitle = isVictory ? 'VITTORIA SHINOBI' : 'MISSIONE TERMINATA';
+    const title = textLabel(bannerTitle, 26, themeColor, true);
     title.anchor.set(0.5, 0);
-    title.x = MODAL_W / 2;
-    title.y = 22;
-    modal.addChild(title);
+    bannerBox.addChild(bannerIcon, title);
+    bannerBox.x = MODAL_W / 2;
+    bannerBox.y = 22;
+    modal.addChild(bannerBox);
 
     const subtitleText = isVictory
       ? 'Hai sconfitto i capi Akatsuki e protetto il Villaggio!'
@@ -130,16 +135,59 @@ export class GameOverScene {
     charForm.y = 112;
     modal.addChild(charForm);
 
+    // 4.b Evaluation Grade Seal (Valutazione Grado Shinobi)
+    let gradeLetter = 'D';
+    let gradeTitle = 'Accademia';
+    let gradeColor = 0x94A3B8;
+
+    if (isVictory || (data.elapsedSec >= 720 && data.kills >= 1000)) {
+      gradeLetter = 'S';
+      gradeTitle = 'Leggenda S';
+      gradeColor = 0xF59E0B;
+    } else if (data.elapsedSec >= 480 && data.kills >= 600) {
+      gradeLetter = 'A';
+      gradeTitle = 'Jonin d\'Elite';
+      gradeColor = 0x818CF8;
+    } else if (data.elapsedSec >= 240 && data.kills >= 250) {
+      gradeLetter = 'B';
+      gradeTitle = 'Chunin Assalto';
+      gradeColor = 0x38BDF8;
+    } else if (data.elapsedSec >= 90) {
+      gradeLetter = 'C';
+      gradeTitle = 'Genin Foglia';
+      gradeColor = 0x34D399;
+    }
+
+    const gradeBadge = new Container();
+    gradeBadge.x = MODAL_W - 55;
+    gradeBadge.y = 108;
+    const seal = new Graphics();
+    seal.circle(0, 0, 20);
+    seal.fill({ color: 0x0A0F1D, alpha: 0.9 });
+    seal.stroke({ color: gradeColor, width: 2.2 });
+    gradeBadge.addChild(seal);
+
+    const gradeText = textLabel(gradeLetter, 16, gradeColor, true);
+    gradeText.anchor.set(0.5);
+    gradeBadge.addChild(gradeText);
+
+    const gradeSub = textLabel(gradeTitle, 7.5, gradeColor, true);
+    gradeSub.anchor.set(0.5, 0);
+    gradeSub.y = 22;
+    gradeBadge.addChild(gradeSub);
+
+    modal.addChild(gradeBadge);
+
     if (data.activeSynergyName) {
       const synBadge = new Graphics();
-      synBadge.roundRect(MODAL_W - 250, 92, 210, 30, 8);
+      synBadge.roundRect(MODAL_W - 275, 92, 195, 30, 8);
       synBadge.fill({ color: 0x78350F });
       synBadge.stroke({ color: 0xF59E0B, width: 1.5 });
       modal.addChild(synBadge);
 
-      const synTxt = textLabel(`★ ${data.activeSynergyName}`, 11, 0xFDE68A, true);
+      const synTxt = textLabel(`★ ${data.activeSynergyName}`, 10.5, 0xFDE68A, true);
       synTxt.anchor.set(0.5);
-      synTxt.x = MODAL_W - 145;
+      synTxt.x = MODAL_W - 177;
       synTxt.y = 107;
       modal.addChild(synTxt);
     }
@@ -150,14 +198,14 @@ export class GameOverScene {
     const timeFormatted = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
     const stats = [
-      { icon: '⏱️', label: 'Tempo Sopravvissuto', value: timeFormatted, color: 0x38BDF8 },
-      { icon: '⚔️', label: 'Nemici Sconfitti', value: data.kills.toLocaleString('it-IT'), color: 0xF87171 },
-      { icon: '👹', label: 'Boss Sconfitti', value: `${data.bossesDefeated}`, color: 0xE879F9 },
-      { icon: '⬆️', label: 'Livello Shinobi', value: `Lv. ${data.level}`, color: 0x818CF8 },
-      { icon: '◉', label: 'Chakra Raccolto', value: data.chakraCollected.toLocaleString('it-IT'), color: 0x67E8F9 },
-      { icon: '¥', label: 'Ryo Guadagnati', value: `+${data.ryoEarned.toLocaleString('it-IT')} ¥`, color: 0xFBBF24 },
-      { icon: '✦', label: 'Frammenti Ottenuti', value: `+${data.fragmentsEarned}`, color: 0x34D399 },
-      { icon: '📜', label: 'Rotoli Shinobi', value: `+${data.scrollsEarned}`, color: 0xF97316 },
+      { iconKey: 'stat_speed', label: 'Tempo Sopravvissuto', value: timeFormatted, color: 0x38BDF8 },
+      { iconKey: 'multiplayer', label: 'Nemici Sconfitti', value: data.kills.toLocaleString('it-IT'), color: 0xF87171 },
+      { iconKey: 'codex', label: 'Boss Sconfitti', value: `${data.bossesDefeated}`, color: 0xE879F9 },
+      { iconKey: 'upgrades', label: 'Livello Shinobi', value: `Lv. ${data.level}`, color: 0x818CF8 },
+      { iconKey: 'chakra_orb', label: 'Chakra Raccolto', value: data.chakraCollected.toLocaleString('it-IT'), color: 0x67E8F9 },
+      { iconKey: 'ryo', label: 'Ryo Guadagnati', value: `+${data.ryoEarned.toLocaleString('it-IT')} ¥`, color: 0xFBBF24 },
+      { iconKey: 'ramen', label: 'Frammenti Ottenuti', value: `+${data.fragmentsEarned}`, color: 0x34D399 },
+      { iconKey: 'scroll', label: 'Rotoli Shinobi', value: `+${data.scrollsEarned}`, color: 0xF97316 },
     ];
 
     const gridStartX = 28;
@@ -176,18 +224,18 @@ export class GameOverScene {
       cellBg.fill({ color: 0x171E2E, alpha: 0.6 });
       modal.addChild(cellBg);
 
-      const ic = textLabel(st.icon, 18);
-      ic.x = x + 12;
-      ic.y = y + 8;
+      const ic = createNarutoIcon(st.iconKey, 26);
+      ic.x = x + 20;
+      ic.y = y + 20;
       modal.addChild(ic);
 
       const lbl = textLabel(st.label, 11, 0x94A3B8);
-      lbl.x = x + 38;
+      lbl.x = x + 40;
       lbl.y = y + 6;
       modal.addChild(lbl);
 
       const val = textLabel(st.value, 15, st.color, true);
-      val.x = x + 38;
+      val.x = x + 40;
       val.y = y + 20;
       modal.addChild(val);
     });
@@ -208,7 +256,7 @@ export class GameOverScene {
     retryBg.fill({ color: 0xDC2626 });
     retryBtn.addChild(retryBg);
 
-    const retryTxt = textLabel('🔄 RIGIOCA (R)', 14, 0xffffff, true);
+    const retryTxt = textLabel('RIGIOCA (R)', 14, 0xffffff, true);
     retryTxt.anchor.set(0.5);
     retryTxt.x = btnW / 2;
     retryTxt.y = 24;
@@ -231,7 +279,7 @@ export class GameOverScene {
     villageBg.fill({ color: 0x2563EB });
     villageBtn.addChild(villageBg);
 
-    const villageTxt = textLabel('⛩️ VILLAGGIO SHINOBI (M)', 14, 0xffffff, true);
+    const villageTxt = textLabel('VILLAGGIO SHINOBI (M)', 14, 0xffffff, true);
     villageTxt.anchor.set(0.5);
     villageTxt.x = btnW / 2;
     villageTxt.y = 24;

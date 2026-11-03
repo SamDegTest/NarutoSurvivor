@@ -1,9 +1,29 @@
 // ============================================================
 //  NarutoSurvivor — Canonical Anime Jutsu Catalog
-//  Authentic anime techniques with unique mechanics, behaviors and VFX
+//  Authentic anime techniques with 5-Level Progression & Plus (+) Evolutions
 // ============================================================
 
 import type { ElementalAffinity, JutsuBehavior, Character } from '../types/character';
+
+export interface JutsuEvolutionRequirement {
+  statId: string;       // e.g. 'dmg_up', 'crit_up', 'cooldown_down', etc.
+  statName: string;     // e.g. 'Chakra Concentrato (Danno)'
+  statIcon: string;     // e.g. '⚡'
+  description: string;
+}
+
+export interface JutsuPlusEvolution {
+  nameIT: string;       // e.g. 'Rasengan + (Sfera Spiraliforme Suprema)'
+  nameJP: string;       // e.g. '螺旋丸・極'
+  icon: string;         // e.g. '🌀+'
+  description: string;
+  vfxColor: number;
+  dmgMultiplier: number;
+  cooldownMultiplier: number;
+  bonusPierce: number;
+  bonusRadius: number;
+  specialEffectDescription: string;
+}
 
 export interface JutsuDefinition {
   id: string;
@@ -14,16 +34,20 @@ export interface JutsuDefinition {
   behavior: JutsuBehavior;
   baseDmgCoeff: number;
   cooldownSec: number;
-  maxLevel: number;
+  maxLevel: number; // Strictly 5 levels for base form
   vfxColor: number;
   description: string;
   characterAffinity?: string[]; // character ID prefixes that have priority
+  evolutionReq: JutsuEvolutionRequirement;
+  plusEvolution: JutsuPlusEvolution;
 }
 
 export interface ActiveJutsuInstance {
   definition: JutsuDefinition;
-  level: number;
+  level: number; // 1 to 5
   cooldownTimer: number;
+  isPlus?: boolean; // Set to true when evolved to +
+  statRequirementMet?: boolean; // Set to true when required stat is upgraded AFTER reaching Lv. 5
 }
 
 export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
@@ -41,6 +65,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x38BDF8,
     description: 'Vortice compresso di puro chakra rotante ad alta densità che trapassa le linee nemiche.',
     characterAffinity: ['naruto', 'minato', 'jiraiya', 'konohamaru', 'boruto'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per stabilizzare la concentrazione del chakra.',
+    },
+    plusEvolution: {
+      nameIT: 'Rasengan + (Sfera Spiraliforme Suprema)',
+      nameJP: '螺旋丸・極',
+      icon: '🌀+',
+      description: 'Vortice di chakra colossale con doppia perforazione e onde d\'urto continue ad alto impatto (+100% Danno).',
+      vfxColor: 0x38BDF8,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 3,
+      bonusRadius: 6,
+      specialEffectDescription: 'Raggio e dimensioni raddoppiati, onde d\'urto sismiche all\'impatto.',
+    },
   },
   {
     id: 'jutsu_kage_bunshin',
@@ -55,6 +97,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xF59E0B,
     description: 'Evoca decine di cloni d\'ombra che si lanciano a 360° travolgendo ogni nemico circostante.',
     characterAffinity: ['naruto', 'kakashi'],
+    evolutionReq: {
+      statId: 'cooldown_down',
+      statName: 'Flusso del Chakra (Cooldown)',
+      statIcon: '🌀',
+      description: 'Richiede 1 potenziamento del Flusso di Chakra per sostenere cloni multipli.',
+    },
+    plusEvolution: {
+      nameIT: 'Tajuu Kage Bunshin + (Esercito dei Mille Cloni)',
+      nameJP: '多重影分身・千人軍',
+      icon: '👥+',
+      description: 'Un\'ondata travolgente di centinaia di cloni d\'ombra che saturano lo schermo intero (+90% Danno).',
+      vfxColor: 0xF59E0B,
+      dmgMultiplier: 1.9,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 2,
+      bonusRadius: 4,
+      specialEffectDescription: 'Numero di cloni proiettili raddoppiato a 360° con spazzata circolare.',
+    },
   },
   {
     id: 'jutsu_rasenshuriken',
@@ -69,6 +129,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x22D3EE,
     description: 'Lancia un enorme shuriken di vento che esplode in miliardi di aghi microscopici di chakra.',
     characterAffinity: ['naruto'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per infondere lame di vento a livello molecolare.',
+    },
+    plusEvolution: {
+      nameIT: 'Fūton: Rasenshuriken + (Tempesta dei Micro-Aghi)',
+      nameJP: '風遁・螺旋手裏剣・極',
+      icon: '🌪️+',
+      description: 'Shuriken ciclonico colossale con vortice di richiamo gravitazionale e raggio d\'esplosione amplificato (+120% Danno).',
+      vfxColor: 0x06B6D4,
+      dmgMultiplier: 2.2,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 5,
+      bonusRadius: 10,
+      specialEffectDescription: 'Esplosione a schermo espanso che annienta anche i nemici d\'élite.',
+    },
   },
   {
     id: 'jutsu_oodama_rasengan',
@@ -83,6 +161,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x0284C7,
     description: 'Sfera di dimensioni giganti che distrugge interi gruppi compatti con onde di pressione.',
     characterAffinity: ['naruto', 'jiraiya'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per comprimere il volume gigante della sfera.',
+    },
+    plusEvolution: {
+      nameIT: 'Chō Oodama Rasengan + (Colosso Spiraliforme)',
+      nameJP: '超大玉螺旋丸・極',
+      icon: '🔵+',
+      description: 'Sfera titànica a ventaglio espanso che spazza via orde intere con pressione devastante (+100% Danno).',
+      vfxColor: 0x0284C7,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.80,
+      bonusPierce: 4,
+      bonusRadius: 8,
+      specialEffectDescription: 'Raggio proiettile aumentato del 60% e perforazione quadrupla.',
+    },
   },
 
   // ── SASUKE TECHNIQUES ─────────────────────────────────────
@@ -99,6 +195,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x60A5FA,
     description: 'Scarica elettrica ad altissima concentrazione sonora che trapassa con violenza i bersagli.',
     characterAffinity: ['sasuke', 'kakashi'],
+    evolutionReq: {
+      statId: 'crit_up',
+      statName: 'Occhio del Predatore (Critico)',
+      statIcon: '💥',
+      description: 'Richiede 1 potenziamento del Critico per individuare il punto debole istantaneo.',
+    },
+    plusEvolution: {
+      nameIT: 'Chidori + (Mille Falchi del Tuono Nero)',
+      nameJP: '千鳥・漆黒',
+      icon: '⚡+',
+      description: 'Fendente elettrico intriso di fulmine nero che trapassa ogni armatura e concatena archi di scariche (+110% Danno).',
+      vfxColor: 0x818CF8,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 4,
+      bonusRadius: 6,
+      specialEffectDescription: 'Folgora con archi di saette continue ad altissima probabilità di critico.',
+    },
   },
   {
     id: 'jutsu_goukakyuu',
@@ -113,6 +227,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xEF4444,
     description: 'Tecnica segreta del clan Uchiha: espelle una violenta coltre di fiamme che incenerisce il campo.',
     characterAffinity: ['sasuke', 'itachi', 'obito', 'madara', 'shisui'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per innalzare il calore fino alla combustione blu.',
+    },
+    plusEvolution: {
+      nameIT: 'Katon: Gōka Mekkyaku + (Grande Annientamento di Fuoco)',
+      nameJP: '火遁・豪火滅却・極',
+      icon: '🔥+',
+      description: 'Un mare ininterrotto di fiamme ardenti che consuma l\'intero settore nemico (+100% Danno).',
+      vfxColor: 0xEF4444,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 5,
+      bonusRadius: 8,
+      specialEffectDescription: 'Ventaglio di fiamme allargato con 7 palle di fuoco perforanti.',
+    },
   },
   {
     id: 'jutsu_chidori_nagashi',
@@ -127,6 +259,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x93C5FD,
     description: 'Scarica a 360 gradi che fuoriesce da tutto il corpo, folgorando e paralizzando chiunque si avvicini.',
     characterAffinity: ['sasuke'],
+    evolutionReq: {
+      statId: 'defense_up',
+      statName: 'Corpo di Pietra (Difesa)',
+      statIcon: '🛡️',
+      description: 'Richiede 1 potenziamento della Difesa per creare un campo elettromagnetico respingente.',
+    },
+    plusEvolution: {
+      nameIT: 'Chidori Nagashi + (Santuario Elettrico Assoluto)',
+      nameJP: '千鳥流し・結界',
+      icon: '⚡+',
+      description: 'Barriera elettrica permanente ad anello che folgora e decima qualsiasi aggressore nel raggio esteso (+100% Danno).',
+      vfxColor: 0x93C5FD,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 99,
+      bonusRadius: 12,
+      specialEffectDescription: 'Raggio d\'azione della scarica espanso del 50% con pulsazioni continue.',
+    },
   },
   {
     id: 'jutsu_kirin',
@@ -141,6 +291,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x38BDF8,
     description: 'Convoglia i fulmini atmosferici in un colpo devastante alla velocità della luce.',
     characterAffinity: ['sasuke'],
+    evolutionReq: {
+      statId: 'crit_dmg_up',
+      statName: 'Colpo Letale (Danno Critico)',
+      statIcon: '🔥',
+      description: 'Richiede 1 potenziamento del Danno Critico per scatenare la piena potenza atmosferica.',
+    },
+    plusEvolution: {
+      nameIT: 'Kirin + (Drago Celestiale del Tuono)',
+      nameJP: '麒麟・天雷神',
+      icon: '🌩️+',
+      description: 'Il leone mitico del tuono cala dal cielo con raggio perforante a fascio doppio e devastazione critica (+130% Danno).',
+      vfxColor: 0x38BDF8,
+      dmgMultiplier: 2.3,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 99,
+      bonusRadius: 10,
+      specialEffectDescription: 'Fascio laser di fulmine a tutto schermo con colpo critico automatico.',
+    },
   },
   {
     id: 'jutsu_amaterasu',
@@ -155,6 +323,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x1E1B4B,
     description: 'Fiamme nere generate dal Mangekyō Sharingan che bruciano inestinguibili sul punto di impatto.',
     characterAffinity: ['sasuke', 'itachi'],
+    evolutionReq: {
+      statId: 'crit_up',
+      statName: 'Occhio del Predatore (Critico)',
+      statIcon: '💥',
+      description: 'Richiede 1 potenziamento del Critico per focalizzare lo sguardo del Mangekyō.',
+    },
+    plusEvolution: {
+      nameIT: 'Enton: Kagutsuchi + (Fiamme Nere Infernale)',
+      nameJP: '炎遁・加具土命・極',
+      icon: '🖤+',
+      description: 'Manipola la forma delle fiamme nere trasformandole in punte e vortici inestinguibili che polverizzano i nemici (+120% Danno).',
+      vfxColor: 0x312E81,
+      dmgMultiplier: 2.2,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 99,
+      bonusRadius: 10,
+      specialEffectDescription: 'Vortice di fiamme nere a persistenza prolungata con ustione inestinguibile.',
+    },
   },
 
   // ── KAKASHI TECHNIQUES ────────────────────────────────────
@@ -171,6 +357,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x7DD3FC,
     description: 'Evoluzione perfezionata del Chidori capace di recidere anche i fulmini.',
     characterAffinity: ['kakashi'],
+    evolutionReq: {
+      statId: 'crit_up',
+      statName: 'Occhio del Predatore (Critico)',
+      statIcon: '💥',
+      description: 'Richiede 1 potenziamento del Critico per tagliare il chakra nemico con precisione millimetrica.',
+    },
+    plusEvolution: {
+      nameIT: 'Kamui Raikiri + (Fendente Spaziotemporale)',
+      nameJP: '神威雷切・極',
+      icon: '⚡+',
+      description: 'Raggio di Raikiri potenziato dal chakra spaziotemporale del Kamui: ignora ogni difesa nemica (+120% Danno).',
+      vfxColor: 0x67E8F9,
+      dmgMultiplier: 2.2,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 99,
+      bonusRadius: 8,
+      specialEffectDescription: 'Fascio perforante assoluto con rifrazione dimensionale.',
+    },
   },
   {
     id: 'jutsu_doryuuheki',
@@ -185,6 +389,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xD97706,
     description: 'Erigge zolle e spuntoni di pietra che sbarrano la strada e schiacciano i nemici.',
     characterAffinity: ['kakashi', 'sarutobi', 'yamato'],
+    evolutionReq: {
+      statId: 'defense_up',
+      statName: 'Corpo di Pietra (Difesa)',
+      statIcon: '🛡️',
+      description: 'Richiede 1 potenziamento della Difesa per forgiare granito indistruttibile.',
+    },
+    plusEvolution: {
+      nameIT: 'Doton: Doryūheki + (Fortezza Inviolabile di Roccia)',
+      nameJP: '土遁・土流壁・金剛',
+      icon: '🪨+',
+      description: 'Spuntoni di roccia adamantina circondano il ninja respingendo e schiacciando qualsiasi assalto (+100% Danno).',
+      vfxColor: 0xD97706,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 99,
+      bonusRadius: 10,
+      specialEffectDescription: 'Area di spuntoni rocciosi ampliata del 60% con rimbalzo respingente.',
+    },
   },
   {
     id: 'jutsu_suiryuudan',
@@ -199,6 +421,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x3B82F6,
     description: 'Modella il chakra acquatico in un maestoso drago che travolge le prime linee.',
     characterAffinity: ['kakashi', 'zabuza', 'tobirama', 'kisame', 'mei'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per incrementare la pressione idraulica del drago.',
+    },
+    plusEvolution: {
+      nameIT: 'Suiton: Daibakufu + (Grande Cascata del Drago)',
+      nameJP: '水遁・大瀑布・水龍極',
+      icon: '🐉+',
+      description: 'Tre colossali draghi d\'acqua si scagliano all\'unisono creando un maremoto travolgente (+110% Danno).',
+      vfxColor: 0x3B82F6,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 6,
+      bonusRadius: 8,
+      specialEffectDescription: 'Rilascia tre draghi d\'acqua simultanei che penetrano le fila nemiche.',
+    },
   },
   {
     id: 'jutsu_kamui',
@@ -213,6 +453,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xA855F7,
     description: 'Apre uno squarcio spaziotemporale risucchiando i nemici in un\'altra dimensione.',
     characterAffinity: ['kakashi', 'obito'],
+    evolutionReq: {
+      statId: 'cooldown_down',
+      statName: 'Flusso del Chakra (Cooldown)',
+      statIcon: '🌀',
+      description: 'Richiede 1 potenziamento del Flusso di Chakra per velocizzare lo strappo dimensionale.',
+    },
+    plusEvolution: {
+      nameIT: 'Kamui + (Spirale Dimensionale Perfetta)',
+      nameJP: '神威・時空間渦',
+      icon: '🌀+',
+      description: 'Voragine dimensionale amplificata con forza centripeta che risucchia e annienta tutti i nemici nell\'area (+140% Danno).',
+      vfxColor: 0xC084FC,
+      dmgMultiplier: 2.4,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 99,
+      bonusRadius: 14,
+      specialEffectDescription: 'Risucchio gravitazionale a raggio enorme che inghiotte gruppi compatti.',
+    },
   },
 
   // ── SAKURA & TSUNADE TECHNIQUES ───────────────────────────
@@ -229,6 +487,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xF43F5E,
     description: 'Frantuma il suolo con un pugno caricato di chakra, scatenando terremoti concentrici.',
     characterAffinity: ['sakura', 'tsunade'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per concentrare la forza mostruosa nel pugno.',
+    },
+    plusEvolution: {
+      nameIT: 'Shanarō! + (Terremoto Frantuma-Mondo)',
+      nameJP: '桜花衝・崩壊',
+      icon: '🌸+',
+      description: 'Impatto titanico che frantuma la crosta terrestre in cerchi concentrici spazzando ogni nemico (+130% Danno).',
+      vfxColor: 0xF43F5E,
+      dmgMultiplier: 2.3,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 99,
+      bonusRadius: 12,
+      specialEffectDescription: 'Tre onde sismiche concentriche a catena con danno esteso.',
+    },
   },
   {
     id: 'jutsu_byakugou_pulse',
@@ -243,6 +519,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x10B981,
     description: 'Rilascia globi di chakra vitale che orbitano attorno al ninja respingendo gli aggressori.',
     characterAffinity: ['sakura', 'tsunade'],
+    evolutionReq: {
+      statId: 'hp_up',
+      statName: 'Vitalità del Ninja (HP)',
+      statIcon: '❤️',
+      description: 'Richiede 1 potenziamento della Vitalità per alimentare il sigillo della fronte.',
+    },
+    plusEvolution: {
+      nameIT: 'Aura della Rinascita + (Byakugō dei Cento Sigilli)',
+      nameJP: '百豪の術・極意',
+      icon: '💎+',
+      description: 'Globi romboidali di pura rigenerazione che sfrecciano a velocità raddoppiata falciando chiunque si avvicini (+100% Danno).',
+      vfxColor: 0x34D399,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 99,
+      bonusRadius: 8,
+      specialEffectDescription: '5 globi orbitali ad alta velocità che respingono continuamente i nemici.',
+    },
   },
 
   // ── GAARA TECHNIQUES ──────────────────────────────────────
@@ -259,6 +553,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xCA8A04,
     description: 'Avvolge e soffoca i nemici in densi strati di sabbia intrisa di chakra.',
     characterAffinity: ['gaara', 'shinki'],
+    evolutionReq: {
+      statId: 'defense_up',
+      statName: 'Corpo di Pietra (Difesa)',
+      statIcon: '🛡️',
+      description: 'Richiede 1 potenziamento della Difesa per addensare la corazza di sabbia.',
+    },
+    plusEvolution: {
+      nameIT: 'Sabaku Sōsō + (Funerale Imperiale del Deserto)',
+      nameJP: '砂縛柩・砂漠葬送',
+      icon: '🏜️+',
+      description: 'Strizza e polverizza istantaneamente interi gruppi di nemici stretti nella sabbia (+110% Danno).',
+      vfxColor: 0xCA8A04,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 99,
+      bonusRadius: 10,
+      specialEffectDescription: 'Impulso di compressione della sabbia che schiaccia all\'istante i mob.',
+    },
   },
   {
     id: 'jutsu_ryusa_bakuryu',
@@ -273,6 +585,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xB45309,
     description: 'Un\'onda gigantesca di sabbia che copre l\'intero orizzonte e polverizza ogni ostacolo.',
     characterAffinity: ['gaara'],
+    evolutionReq: {
+      statId: 'collect_up',
+      statName: 'Attrattore di Chakra (Portata)',
+      statIcon: '◉',
+      description: 'Richiede 1 potenziamento della Raccolta per espandere il dominio di sabbia.',
+    },
+    plusEvolution: {
+      nameIT: 'Ryūsa Bakuryū + (Oceano di Sabbie Mobili)',
+      nameJP: '流砂爆流・砂漠大波',
+      icon: '🌊+',
+      description: 'Una marea tempestosa a 360° che sommerge lo scenario e seppellisce le orde nemiche (+110% Danno).',
+      vfxColor: 0xB45309,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.80,
+      bonusPierce: 5,
+      bonusRadius: 10,
+      specialEffectDescription: 'Onda gigante a 360° con raggio raddoppiato.',
+    },
   },
 
   // ── MINATO TECHNIQUES ─────────────────────────────────────
@@ -289,6 +619,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xFBBF24,
     description: 'Il Lampo Giallo si teletrasporta a velocità sovrumana falciando chiunque si trovi nelle vicinanze.',
     characterAffinity: ['minato', 'tobirama'],
+    evolutionReq: {
+      statId: 'speed_up',
+      statName: 'Velocità del Vento (Movimento)',
+      statIcon: '💨',
+      description: 'Richiede 1 potenziamento della Velocità per dislocarsi in decine di punti contemporaneamente.',
+    },
+    plusEvolution: {
+      nameIT: 'Hiraishin + (Lampo Giallo Supremo)',
+      nameJP: '飛雷神・時空間閃光',
+      icon: '⚡+',
+      description: 'Raffica di dardi dimensionali ad altissima velocità che colpiscono all\'infinito i bersagli (+120% Danno).',
+      vfxColor: 0xFDE047,
+      dmgMultiplier: 2.2,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 4,
+      bonusRadius: 6,
+      specialEffectDescription: 'Teletrasporto fulmineo continuo a raggio omnidirezionale espanso.',
+    },
   },
 
   // ── JIRAIYA TECHNIQUES ────────────────────────────────────
@@ -305,6 +653,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xEA580C,
     description: 'Infiamma l\'olio del Monte Myoboku con Katon per generare fiamme continue indomabili.',
     characterAffinity: ['jiraiya'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per incrementare l\'infiammabilità dell\'olio.',
+    },
+    plusEvolution: {
+      nameIT: 'Gamayu Endan + (Fiamme Eremitiche dei Rospi)',
+      nameJP: '蝦蟇油炎弾・仙術極',
+      icon: '🐸+',
+      description: 'Fiume di petrolio magico infiammato con chakra eremitico che lascia incendi permanenti sul suolo (+110% Danno).',
+      vfxColor: 0xEA580C,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 5,
+      bonusRadius: 8,
+      specialEffectDescription: 'Scia di fiamme ardenti che ustionano i nemici nel tempo.',
+    },
   },
   {
     id: 'jutsu_kebari_senbon',
@@ -319,6 +685,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xE2E8F0,
     description: 'Indurisce la chioma trasformando i capelli in una raffica letale di senbon perforanti.',
     characterAffinity: ['jiraiya'],
+    evolutionReq: {
+      statId: 'crit_up',
+      statName: 'Occhio del Predatore (Critico)',
+      statIcon: '💥',
+      description: 'Richiede 1 potenziamento del Critico per affilare gli aghi di crine d\'acciaio.',
+    },
+    plusEvolution: {
+      nameIT: 'Kebari Senbon + (Tempesta di Spine Bianche)',
+      nameJP: '毛針千本・豪雨',
+      icon: '🦔+',
+      description: 'Una raffica ininterrotta di aghi perforanti che trafiggono bersagli multipli ad alta cadenza (+100% Danno).',
+      vfxColor: 0xF8FAFC,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 4,
+      bonusRadius: 4,
+      specialEffectDescription: 'Raddoppia il numero di senbon sparati a ventaglio stretto.',
+    },
   },
 
   // ── SHIKAMARU TECHNIQUES ──────────────────────────────────
@@ -335,6 +719,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x334155,
     description: 'Allunga l\'ombra sul suolo collegandosi a quella nemica e provocando danni da strangolamento.',
     characterAffinity: ['shikamaru', 'shikaku'],
+    evolutionReq: {
+      statId: 'cooldown_down',
+      statName: 'Flusso del Chakra (Cooldown)',
+      statIcon: '🌀',
+      description: 'Richiede 1 potenziamento del Flusso di Chakra per estendere e ritrarre l\'ombra all\'istante.',
+    },
+    plusEvolution: {
+      nameIT: 'Kage Kubishibari + (Strangolamento dell\'Ombra Suprema)',
+      nameJP: '影首縛りの術・極',
+      icon: '👤+',
+      description: 'L\'ombra si solleva in artigli d\'oscurità che strangolano e immobilizzano tutti i nemici in linea retta (+110% Danno).',
+      vfxColor: 0x1E293B,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 99,
+      bonusRadius: 8,
+      specialEffectDescription: 'Raggio ombra allargato a penetrazione totale e rallentamento.',
+    },
   },
 
   // ── NEJI & HINATA TECHNIQUES ──────────────────────────────
@@ -351,6 +753,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x67E8F9,
     description: 'Scudo difensivo rotante del clan Hyūga che distrugge e rimbalza via ogni minaccia.',
     characterAffinity: ['neji', 'hinata', 'hiashi'],
+    evolutionReq: {
+      statId: 'defense_up',
+      statName: 'Corpo di Pietra (Difesa)',
+      statIcon: '🛡️',
+      description: 'Richiede 1 potenziamento della Difesa per espellere chakra da tutti i 361 tenketsu.',
+    },
+    plusEvolution: {
+      nameIT: 'Hakkeshō Kaiten + (Cupola Divina degli Otto Trigrammi)',
+      nameJP: '八卦掌回天・神域',
+      icon: '🛡️+',
+      description: 'Cupola di chakra rotante gigante che crea un\'area impenetrabile di annientamento continuo (+100% Danno).',
+      vfxColor: 0xA5F3FC,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 99,
+      bonusRadius: 10,
+      specialEffectDescription: 'Raggio della cupola rotante aumentato del 60% con respinta nemica.',
+    },
   },
   {
     id: 'jutsu_jyuuhou_soushiken',
@@ -365,6 +785,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xC084FC,
     description: 'Modella il chakra delle mani in due fauci leonine che recidono i punti di fuga nemici.',
     characterAffinity: ['hinata'],
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per intensificare il morso del leone spirituale.',
+    },
+    plusEvolution: {
+      nameIT: 'Jūhō Sōshiken + (Doppio Leone Spirituale dei Sei Sentieri)',
+      nameJP: '柔歩双獅拳・六道神獣',
+      icon: '🦁+',
+      description: 'Due leoni di chakra viola-dorato che azzannano e risucchiano il chakra nemico a ricerca autonoma (+120% Danno).',
+      vfxColor: 0xE879F9,
+      dmgMultiplier: 2.2,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 4,
+      bonusRadius: 6,
+      specialEffectDescription: 'Fauci leonine giganti con penetrazione e drenaggio chakra.',
+    },
   },
 
   // ── ROCK LEE & GUY TECHNIQUES ─────────────────────────────
@@ -381,6 +819,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0x22C55E,
     description: 'Calcio acrobatico rotante ad alta velocità che spazza via i nemici tutt\'attorno.',
     characterAffinity: ['lee', 'guy'],
+    evolutionReq: {
+      statId: 'speed_up',
+      statName: 'Velocità del Vento (Movimento)',
+      statIcon: '💨',
+      description: 'Richiede 1 potenziamento della Velocità per raggiungere la rotazione supersonica.',
+    },
+    plusEvolution: {
+      nameIT: 'Konoha Gōriki Senpū + (Uragano Devastante della Foglia)',
+      nameJP: '木ノ葉剛力旋風・極',
+      icon: '🌪️+',
+      description: 'Calcio a spirale a velocità sonica che genera un ciclone verde sbalzando i nemici lontano (+100% Danno).',
+      vfxColor: 0x4ADE80,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 99,
+      bonusRadius: 8,
+      specialEffectDescription: 'Ciclone rotante permanente che scaglia via i nemici circostanti.',
+    },
   },
   {
     id: 'jutsu_asa_kujaku',
@@ -395,6 +851,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     vfxColor: 0xF97316,
     description: 'Pugni a velocità ultrasonica che incendiano l\'aria scagliando piume di fuoco.',
     characterAffinity: ['guy', 'lee'],
+    evolutionReq: {
+      statId: 'crit_dmg_up',
+      statName: 'Colpo Letale (Danno Critico)',
+      statIcon: '🔥',
+      description: 'Richiede 1 potenziamento del Danno Critico per aprire la 6ª porta del chakra.',
+    },
+    plusEvolution: {
+      nameIT: 'Hirudora + (Tigre del Mezzogiorno / Pavone Supremo)',
+      nameJP: '昼虎・朝孔雀極意',
+      icon: '🦚+',
+      description: 'Raffica di pugni sonici concentrati che formano una tigre ruggente a pressione aerea titanica (+130% Danno).',
+      vfxColor: 0xFB923C,
+      dmgMultiplier: 2.3,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 4,
+      bonusRadius: 8,
+      specialEffectDescription: 'Raffica a 360° con sfere di fuoco incandescente a triplo impatto.',
+    },
   },
 
   // ── UNIVERSAL CANONICAL NINJA ARTS ────────────────────────
@@ -410,6 +884,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     maxLevel: 5,
     vfxColor: 0x94A3B8,
     description: 'Moltiplica uno shuriken da lancio in una tempesta di migliaia di lame d\'acciaio.',
+    evolutionReq: {
+      statId: 'cooldown_down',
+      statName: 'Flusso del Chakra (Cooldown)',
+      statIcon: '🌀',
+      description: 'Richiede 1 potenziamento del Flusso di Chakra per sdoppiare le armi a raffica.',
+    },
+    plusEvolution: {
+      nameIT: 'Shuriken Kage Bunshin + (Tempesta dei Mille Dardi)',
+      nameJP: '手裏剣影分身・千刃乱舞',
+      icon: '🗡️+',
+      description: 'Una tempesta densissima di shuriken e kunai moltiplicati che crivellano ogni linea nemica (+100% Danno).',
+      vfxColor: 0xE2E8F0,
+      dmgMultiplier: 2.0,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 3,
+      bonusRadius: 4,
+      specialEffectDescription: 'Ventaglio di 14 shuriken con perforazione tripla a traiettoria densa.',
+    },
   },
   {
     id: 'jutsu_fuuton_daitoppa',
@@ -423,6 +915,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     maxLevel: 5,
     vfxColor: 0x10B981,
     description: 'Colpo di vento ciclonico che sbalza via le orde nemiche provocando gravi lacerazioni.',
+    evolutionReq: {
+      statId: 'speed_up',
+      statName: 'Velocità del Vento (Movimento)',
+      statIcon: '💨',
+      description: 'Richiede 1 potenziamento della Velocità per armonizzare i vortici di vento.',
+    },
+    plusEvolution: {
+      nameIT: 'Fūton: Renkūdan + (Raffica Ciclonica a Pressione)',
+      nameJP: '風遁・練空弾・極',
+      icon: '🍃+',
+      description: 'Lame di vento pressurizzate che penetrano e squarciano qualsiasi schiera in avvicinamento (+110% Danno).',
+      vfxColor: 0x34D399,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.70,
+      bonusPierce: 5,
+      bonusRadius: 6,
+      specialEffectDescription: 'Vortice espanso di lame d\'aria ad alta cadenza.',
+    },
   },
   {
     id: 'jutsu_raiton_gian',
@@ -436,6 +946,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     maxLevel: 5,
     vfxColor: 0x38BDF8,
     description: 'Raggio di saette ad alta densità che trafigge istantaneamente file nemiche intere.',
+    evolutionReq: {
+      statId: 'crit_up',
+      statName: 'Occhio del Predatore (Critico)',
+      statIcon: '💥',
+      description: 'Richiede 1 potenziamento del Critico per polarizzare i raggi di fulmine ad alta tensione.',
+    },
+    plusEvolution: {
+      nameIT: 'Raiton: Gian + (Falso Buio Folgorante ad Arco)',
+      nameJP: '雷遁・偽暗・雷撃極',
+      icon: '⚡+',
+      description: 'Un raggio laser fulmineo che allarga saette laterali bruciando interi corridoi (+110% Danno).',
+      vfxColor: 0x7DD3FC,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 99,
+      bonusRadius: 8,
+      specialEffectDescription: 'Fascio continuo a doppia intensità con scariche ad arco.',
+    },
   },
   {
     id: 'jutsu_suiton_teppoudama',
@@ -449,6 +977,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     maxLevel: 5,
     vfxColor: 0x3B82F6,
     description: 'Raffica di sferette pressurizzate ad alto impatto idraulico.',
+    evolutionReq: {
+      statId: 'dmg_up',
+      statName: 'Chakra Concentrato (Danno)',
+      statIcon: '⚡',
+      description: 'Richiede 1 potenziamento del Danno per concentrare la pressione d\'urto dell\'acqua.',
+    },
+    plusEvolution: {
+      nameIT: 'Suiton: Suishōha + (Onda d\'Urto Idraulica Perforante)',
+      nameJP: '水遁・水衝波・極',
+      icon: '💧+',
+      description: 'Sfere d\'acqua giganti caricate a spirale che sbalzano via e travolgono gruppi densi (+110% Danno).',
+      vfxColor: 0x60A5FA,
+      dmgMultiplier: 2.1,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 4,
+      bonusRadius: 6,
+      specialEffectDescription: 'Raffica a 6 colpi pesanti ad alta velocità con perforazione.',
+    },
   },
   {
     id: 'jutsu_doton_doryuudan',
@@ -462,6 +1008,24 @@ export const CANONICAL_JUTSU_CATALOG: JutsuDefinition[] = [
     maxLevel: 5,
     vfxColor: 0xD97706,
     description: 'Una testa di fango e rocce spara massi incandescenti verso i nemici più vicini.',
+    evolutionReq: {
+      statId: 'defense_up',
+      statName: 'Corpo di Pietra (Difesa)',
+      statIcon: '🛡️',
+      description: 'Richiede 1 potenziamento della Difesa per addensare i proiettili di roccia magmatica.',
+    },
+    plusEvolution: {
+      nameIT: 'Doton: Doryūdan + (Drago Vulcanico di Pietra)',
+      nameJP: '土遁・土龍弾・金剛岩',
+      icon: '🪨+',
+      description: 'Massi vulcanici esplosivi che all\'impatto si frantumano in proiettili secondari perforanti (+120% Danno).',
+      vfxColor: 0xB45309,
+      dmgMultiplier: 2.2,
+      cooldownMultiplier: 0.75,
+      bonusPierce: 4,
+      bonusRadius: 7,
+      specialEffectDescription: 'Massi pesanti con frammentazione esplosiva all\'impatto.',
+    },
   },
 ];
 

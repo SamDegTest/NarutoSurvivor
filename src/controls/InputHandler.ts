@@ -39,10 +39,12 @@ export class InputHandler {
   private _padPausePrev    = false;
   private _padL1Prev       = false;
   private _padR1Prev       = false;
+  private _padActionPrev   = false;
 
   // External callbacks
   onPause?: () => void;
   onMute?:  () => void;
+  onAwaken?: () => void;
   onSelectSlot?: (slotIndex: number) => void;
   onCycleSlot?:  (direction: -1 | 1) => void;
 
@@ -52,7 +54,9 @@ export class InputHandler {
       this.keys.add(e.code);
       this._lastSource = 'keyboard';
 
-      if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) {
+      if (e.code === 'Space') {
+        this.onAwaken?.();
+      } else if (['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) {
         const idx = parseInt(e.code.replace('Digit', ''), 10) - 1;
         this.onSelectSlot?.(idx);
       } else if (e.code === 'KeyQ') {
@@ -110,6 +114,13 @@ export class InputHandler {
       }
       this._padL1Prev = l1;
       this._padR1Prev = r1;
+
+      // Button 0 (A/Cross) triggers Awakening
+      const btnAction = pad.buttons[0]?.pressed ?? false;
+      if (btnAction && !this._padActionPrev) {
+        this.onAwaken?.();
+      }
+      this._padActionPrev = btnAction;
     }
   }
 

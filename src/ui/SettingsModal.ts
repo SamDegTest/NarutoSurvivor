@@ -1,5 +1,7 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { audioManager } from '../systems/audioManager';
+import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon } from '../rendering/IconManager';
 
 // ============================================================
 //  NarutoSurvivor — Settings Modal
@@ -60,11 +62,15 @@ export class SettingsModal {
     this.container.addChild(modalBg);
 
     // Header
-    const title = makeText('⚙  IMPOSTAZIONI (SETTINGS)', 24, 0x38BDF8, true);
+    const titleBox = new Container();
+    const setIcon = createNarutoIcon('settings', 28);
+    setIcon.x = -180; setIcon.y = 12;
+    const title = makeText('IMPOSTAZIONI (SETTINGS)', 24, 0x38BDF8, true);
     title.anchor.set(0.5, 0);
-    title.x = W / 2;
-    title.y = modalY + 24;
-    this.container.addChild(title);
+    titleBox.addChild(setIcon, title);
+    titleBox.x = W / 2;
+    titleBox.y = modalY + 24;
+    this.container.addChild(titleBox);
 
     // Close button
     const closeBtn = new Container();
@@ -90,7 +96,7 @@ export class SettingsModal {
     const startY = modalY + 80;
 
     // 1. Controls
-    const ctrlTitle = makeText('🎮 Comandi di Gioco', 16, 0xFBBF24, true);
+    const ctrlTitle = makeText('Comandi di Gioco', 16, 0xFBBF24, true);
     ctrlTitle.x = modalX + 40; ctrlTitle.y = startY;
     this.container.addChild(ctrlTitle);
 
@@ -99,7 +105,7 @@ export class SettingsModal {
     this.container.addChild(ctrlDesc);
 
     // 2. Audio
-    const audioTitle = makeText('🔊 Audio & Effetti Sonori', 16, 0xFBBF24, true);
+    const audioTitle = makeText('Audio & Effetti Sonori', 16, 0xFBBF24, true);
     audioTitle.x = modalX + 40; audioTitle.y = startY + 145;
     this.container.addChild(audioTitle);
 
@@ -130,7 +136,7 @@ export class SettingsModal {
     fsBg.roundRect(0, 0, 180, 36, 8);
     fsBg.fill({ color: 0x475569 });
     fsBtn.addChild(fsBg);
-    const fsTxt = makeText('SCHERMO INTERO (⛶)', 11, 0xFFFFFF, true);
+    const fsTxt = makeText('SCHERMO INTERO', 11, 0xFFFFFF, true);
     fsTxt.anchor.set(0.5);
     fsTxt.x = 90; fsTxt.y = 18;
     fsBtn.addChild(fsTxt);
@@ -144,8 +150,37 @@ export class SettingsModal {
     });
     this.container.addChild(fsBtn);
 
+    this.navItems = [
+      {
+        container: muteBtn,
+        onSelect: () => {
+          audioManager.toggle();
+          audioManager.playSFX('button_click');
+        },
+        rightIndex: 1,
+      },
+      {
+        container: fsBtn,
+        onSelect: () => {
+          audioManager.playSFX('button_click');
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          } else {
+            document.exitFullscreen().catch(() => {});
+          }
+        },
+        leftIndex: 0,
+        upIndex: 2,
+      },
+      {
+        container: closeBtn,
+        onSelect: () => this.hide(),
+        downIndex: 1,
+      },
+    ];
+
     // 4. Save data info
-    const dataTitle = makeText('💾 Dati e Salvataggi Locali', 16, 0xFBBF24, true);
+    const dataTitle = makeText('Dati e Salvataggi Locali', 16, 0xFBBF24, true);
     dataTitle.x = modalX + 40; dataTitle.y = startY + 235;
     this.container.addChild(dataTitle);
 
@@ -154,13 +189,23 @@ export class SettingsModal {
     this.container.addChild(dataDesc);
   }
 
+  private navItems: NavigatableItem[] = [];
+
   show(onClose?: () => void): void {
     this.onCloseCallback = onClose;
     this.container.visible = true;
+    GamepadMenuNavigator.get()?.pushContext({
+      id: 'settings_modal',
+      items: this.navItems,
+      selectedIndex: 0,
+      columns: 2,
+      onCancel: () => this.hide(),
+    });
   }
 
   hide(): void {
     this.container.visible = false;
+    GamepadMenuNavigator.get()?.popContext('settings_modal');
     if (this.onCloseCallback) this.onCloseCallback();
   }
 }

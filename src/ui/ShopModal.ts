@@ -8,6 +8,7 @@ import { GAME_CONFIG } from '../config/gameConfig';
 import { SaveSystem } from '../systems/saveSystem';
 import { audioManager } from '../systems/audioManager';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon } from '../rendering/IconManager';
 
 const FONT = GAME_CONFIG.FONT_FAMILY;
 
@@ -81,11 +82,15 @@ export class ShopModal {
     this.container.addChild(modalBg);
 
     // Header Title
-    const title = textLabel('🏪 BOTTEGA DI TENTEN & CHIOSCO ICHIRAKU', 22, 0xFBBF24, true);
+    const titleBox = new Container();
+    const shopIcon = createNarutoIcon('shop', 28);
+    shopIcon.x = -260; shopIcon.y = 12;
+    const title = textLabel('BOTTEGA DI TENTEN & CHIOSCO ICHIRAKU', 22, 0xFBBF24, true);
     title.anchor.set(0.5, 0);
-    title.x = W / 2;
-    title.y = modalY + 18;
-    this.container.addChild(title);
+    titleBox.addChild(shopIcon, title);
+    titleBox.x = W / 2;
+    titleBox.y = modalY + 18;
+    this.container.addChild(titleBox);
 
     const sub = textLabel('Investi i tuoi Ryo in pergamene segrete, armi e scorpacciate di ramen per la prossima run', 12, 0x94A3B8);
     sub.anchor.set(0.5, 0);
@@ -100,11 +105,16 @@ export class ShopModal {
     pill.stroke({ color: 0xF59E0B, width: 1.5 });
     this.container.addChild(pill);
 
+    const ryoPillBox = new Container();
+    const ryoPillIc = createNarutoIcon('ryo', 20);
+    ryoPillIc.x = -50; ryoPillIc.y = 0;
     this.ryoText = textLabel('', 13, 0xFBBF24, true);
-    this.ryoText.anchor.set(0.5);
-    this.ryoText.x = modalX + MODAL_W - 140;
-    this.ryoText.y = modalY + 34;
-    this.container.addChild(this.ryoText);
+    this.ryoText.anchor.set(0, 0.5);
+    this.ryoText.x = -32;
+    ryoPillBox.addChild(ryoPillIc, this.ryoText);
+    ryoPillBox.x = modalX + MODAL_W - 140;
+    ryoPillBox.y = modalY + 34;
+    this.container.addChild(ryoPillBox);
 
     // Close button
     const closeBtn = new Container();
@@ -158,7 +168,7 @@ export class ShopModal {
     bgTenten.fill({ color: this.currentTab === 'tenten' ? 0xF59E0B : 0x1E293B });
     tabTenten.addChild(bgTenten);
 
-    const txtTenten = textLabel('🗡️ Emporio di Tenten (Rotoli & Frammenti)', 13, this.currentTab === 'tenten' ? 0x000000 : 0xE2E8F0, true);
+    const txtTenten = textLabel('Emporio di Tenten (Rotoli & Frammenti)', 13, this.currentTab === 'tenten' ? 0x000000 : 0xE2E8F0, true);
     txtTenten.anchor.set(0.5);
     txtTenten.x = tabW / 2;
     txtTenten.y = 18;
@@ -187,7 +197,7 @@ export class ShopModal {
     bgIchiraku.fill({ color: this.currentTab === 'ichiraku' ? 0xF59E0B : 0x1E293B });
     tabIchiraku.addChild(bgIchiraku);
 
-    const txtIchiraku = textLabel('🍜 Chiosco di Ichiraku (Pasti & Buff Run)', 13, this.currentTab === 'ichiraku' ? 0x000000 : 0xE2E8F0, true);
+    const txtIchiraku = textLabel('Chiosco di Ichiraku (Pasti & Buff Run)', 13, this.currentTab === 'ichiraku' ? 0x000000 : 0xE2E8F0, true);
     txtIchiraku.anchor.set(0.5);
     txtIchiraku.x = tabW / 2;
     txtIchiraku.y = 18;
@@ -327,7 +337,7 @@ export class ShopModal {
   private renderItems(): void {
     this.listContainer.removeChildren();
     const profile = SaveSystem.getProfile();
-    this.ryoText.text = `💰 ¥ ${profile.ryo.toLocaleString()}`;
+    this.ryoText.text = `¥ ${profile.ryo.toLocaleString()}`;
 
     const items = this.getItemsForTab();
     const itemW = 830;
@@ -347,20 +357,20 @@ export class ShopModal {
       cardBg.stroke({ color: isAlreadyActive ? 0x10B981 : (canAfford ? item.color : 0x475569), width: 1.5 });
       card.addChild(cardBg);
 
-      // Icon
-      const ic = textLabel(item.icon, 28);
-      ic.x = 20;
-      ic.y = 22;
+      // Authentic Naruto Icon Badge
+      const ic = createNarutoIcon(item.id, 44);
+      ic.x = 42;
+      ic.y = 40;
       card.addChild(ic);
 
       // Name & Description
       const name = textLabel(item.name, 15, isAlreadyActive ? 0xA7F3D0 : 0xFFFFFF, true);
-      name.x = 72;
+      name.x = 76;
       name.y = 16;
       card.addChild(name);
 
       const desc = textLabel(item.desc, 12, isAlreadyActive ? 0x6EE7B7 : 0x94A3B8);
-      desc.x = 72;
+      desc.x = 76;
       desc.y = 44;
       card.addChild(desc);
 

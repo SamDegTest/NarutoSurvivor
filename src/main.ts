@@ -9,10 +9,16 @@ import { ShopModal } from './ui/ShopModal';
 import { MissionsModal } from './ui/MissionsModal';
 import { BagModal } from './ui/BagModal';
 import { SettingsModal } from './ui/SettingsModal';
-import { GenericInfoModal } from './ui/GenericInfoModal';
 import { GamepadMenuNavigator } from './controls/GamepadMenuNavigator';
+import { preloadNarutoIcons } from './rendering/IconManager';
 import { SaveSystem } from './systems/saveSystem';
 import type { Character } from './types/character';
+
+import { StageSelectModal, type StageDefinition } from './ui/StageSelectModal';
+import { TeamModal } from './ui/TeamModal';
+import { MultiplayerModal } from './ui/MultiplayerModal';
+import { BingoBookModal } from './ui/BingoBookModal';
+import { LeaderboardModal } from './ui/LeaderboardModal';
 
 // ============================================================
 //  NarutoSurvivor — Application Bootstrap (PokéSurvivor Style)
@@ -33,6 +39,9 @@ async function main(): Promise<void> {
   // Mount canvas
   document.getElementById('app')!.appendChild(app.canvas);
 
+  // Preload authentic Naruto Anime icons
+  await preloadNarutoIcons();
+
   const W = GAME_CONFIG.WIDTH;
   const H = GAME_CONFIG.HEIGHT;
 
@@ -40,30 +49,38 @@ async function main(): Promise<void> {
   new GamepadMenuNavigator(app);
 
   // ── Screens & Modals ─────────────────────────────────────────
-  const mainMenu      = new MainMenuScreen(app);
-  const selectScreen  = new CharacterSelectScreen(app);
-  const gameScene     = new GameScene(app);
-  const gachaModal    = new GachaModal(app.stage, W, H);
-  const upgradesModal = new UpgradesModal(app.stage, W, H);
-  const shopModal     = new ShopModal(app.stage, W, H);
-  const missionsModal = new MissionsModal(app.stage, W, H);
-  const bagModal      = new BagModal(app.stage, W, H);
-  const settingsModal = new SettingsModal(app.stage, W, H);
-  const infoModal     = new GenericInfoModal(app.stage, W, H);
+  const mainMenu         = new MainMenuScreen(app);
+  const selectScreen     = new CharacterSelectScreen(app);
+  const gameScene        = new GameScene(app);
+  const stageSelectModal = new StageSelectModal(app.stage, W, H);
+  const teamModal        = new TeamModal(app.stage, W, H);
+  const multiplayerModal = new MultiplayerModal();
+  const bingoBookModal   = new BingoBookModal();
+  const gachaModal       = new GachaModal(app.stage, W, H);
+  const upgradesModal    = new UpgradesModal(app.stage, W, H);
+  const shopModal        = new ShopModal(app.stage, W, H);
+  const missionsModal    = new MissionsModal(app.stage, W, H);
+  const bagModal         = new BagModal(app.stage, W, H);
+  const settingsModal    = new SettingsModal(app.stage, W, H);
+  const leaderboardModal = new LeaderboardModal(app.stage, W, H);
 
   // Initial state: hide character select and sub-screens
   selectScreen.hide();
 
   // ── Flow: Start Game ─────────────────────────────────────────
-  const startPlay = (character: Character) => {
+  const startPlay = (character: Character, stage?: StageDefinition) => {
     mainMenu.hide();
     selectScreen.hide();
+    stageSelectModal.hide();
     const currentRank = SaveSystem.getCharacterRank(character.id, character.baseRank);
     const fragments = SaveSystem.getFragments(character.id);
     gameScene.start({
       character,
       rank: currentRank,
       fragments,
+      stageId: stage?.id,
+      stageBiome: stage?.biome,
+      stageName: stage?.nameIT,
     });
   };
 
@@ -80,9 +97,11 @@ async function main(): Promise<void> {
 
   // ── PokéSurvivor Menu Callbacks ──────────────────────────────
   const menuCallbacks: MainMenuCallbacks = {
-    // 1. Play (Enter the dungeon)
+    // 1. Play (Enter the stage)
     onPlay: (char: Character) => {
-      startPlay(char);
+      stageSelectModal.show(char, (stage) => {
+        startPlay(char, stage);
+      });
     },
 
     // 2. Pokémon (Shinobi Roster)
@@ -121,37 +140,40 @@ async function main(): Promise<void> {
       missionsModal.show(() => mainMenu.refreshData());
     },
 
-    // 8. Friends (Squadra Ninja & Co-op)
+    // 8. Friends (Squadra Ninja & Compagno)
     onOpenFriends: () => {
-      infoModal.show({
-        title: '👥 SQUADRA NINJA (TEAM / FRIENDS)',
-        subtitle: 'Formazione ninja a 3 membri e sinergie della Foglia',
-        color: 0x06B6D4,
-        items: [
-          { icon: '🍃', title: 'Team 7 Classico', desc: 'Naruto Uzumaki + Sasuke Uchiha + Sakura Haruno', extra: 'Sinergia Attiva: +15% Velocità' },
-          { icon: '⚡', title: 'Guardiani del Tuono', desc: 'Kakashi Hatake + Minato Namikaze', extra: 'Sinergia: +20% Critico' },
-          { icon: '👁️', title: 'Fratelli Uchiha', desc: 'Sasuke Uchiha + Itachi Uchiha', extra: 'Sinergia: Amaterasu potenziato' },
-          { icon: '🌐', title: 'Modalità Co-op Multi-Shinobi', desc: 'In arrivo nella Fase 4: stanza multigiocatore online!', extra: 'Presto' },
-        ],
-      });
+      teamModal.show(() => mainMenu.refreshData());
     },
 
     // 9. Leaderboard (Classifica Hokage)
     onOpenLeaderboard: () => {
-      infoModal.show({
-        title: '🏆 CLASSIFICA SHINOBI (LEADERBOARD)',
-        subtitle: 'Record storici dei ninja che sono sopravvissuti più a lungo',
-        color: 0xFACC15,
-        items: [
-          { icon: '🥇', title: '1. Minato_YellowFlash', desc: 'Tempo: 42:18 • Minato Namikaze (4★)', extra: 'Score: 1,420,000' },
-          { icon: '🥈', title: '2. Itachi_CrowMaster', desc: 'Tempo: 38:45 • Itachi Uchiha (3★)', extra: 'Score: 1,180,000' },
-          { icon: '🥉', title: '3. ShisuiUchiha (Tu)', desc: 'Tempo: 34:14 • Naruto Sei Vie (5★)', extra: 'Score: 980,500' },
-          { icon: '🎗️', title: '4. Gaara_SandStorm', desc: 'Tempo: 31:02 • Gaara (2★)', extra: 'Score: 840,000' },
-        ],
+      leaderboardModal.show();
+    },
+
+    // 10. Multiplayer (Co-op 2 Giocatori)
+    onOpenMultiplayer: () => {
+      multiplayerModal.show((cfg) => {
+        mainMenu.hide();
+        selectScreen.hide();
+        stageSelectModal.hide();
+        const currentRank = SaveSystem.getCharacterRank(cfg.p1Character.id, cfg.p1Character.baseRank);
+        const fragments = SaveSystem.getFragments(cfg.p1Character.id);
+        gameScene.start({
+          character: cfg.p1Character,
+          rank: currentRank,
+          fragments,
+          multiplayerMode: cfg.mode,
+          coopPartner: cfg.p2Character,
+        });
       });
     },
 
-    // 10. Settings (Impostazioni)
+    // 11. Libro Bingo (Codex Enciclopedia Shinobi)
+    onOpenCodex: () => {
+      bingoBookModal.show();
+    },
+
+    // 12. Settings (Impostazioni)
     onOpenSettings: () => {
       settingsModal.show();
     },

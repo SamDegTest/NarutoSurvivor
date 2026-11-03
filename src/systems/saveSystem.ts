@@ -20,6 +20,19 @@ export interface NextRunBuffs {
   magnetAmulet?: boolean;  // +90px Magnetismo
 }
 
+export interface RunHistoryEntry {
+  characterId: string;
+  characterName: string;
+  elapsedSec: number;
+  level: number;
+  kills: number;
+  ryo: number;
+  stageName: string;
+  grade: 'S' | 'A' | 'B' | 'C' | 'D';
+  isVictory: boolean;
+  date: string;
+}
+
 export interface PlayerProfile {
   playerName: string;
   ninjaRank: string;
@@ -41,7 +54,11 @@ export interface PlayerProfile {
     speedLevel: number;
     ryoLevel: number;
   };
+  plusEvolutionsCount?: number;
+  victories?: number;
+  supportCharacterId?: string;
   nextRunBuffs?: NextRunBuffs;
+  runHistory?: RunHistoryEntry[];
 }
 
 const DEFAULT_PROFILE: PlayerProfile = {
@@ -127,6 +144,17 @@ export class SaveSystem {
   static setSelectedCharacterId(charId: string): void {
     const profile = this.getProfile();
     profile.selectedCharacterId = charId;
+    this.saveProfile(profile);
+  }
+
+  static getSupportCharacterId(): string {
+    const profile = this.getProfile();
+    return profile.supportCharacterId || 'sasuke_genin';
+  }
+
+  static setSupportCharacterId(charId: string): void {
+    const profile = this.getProfile();
+    profile.supportCharacterId = charId;
     this.saveProfile(profile);
   }
 
@@ -219,6 +247,13 @@ export class SaveSystem {
     level: number = 1,
     kills: number = 0,
     bossKilled = false,
+    isVictory = false,
+    runDetails?: {
+      characterId?: string;
+      characterName?: string;
+      stageName?: string;
+      grade?: 'S' | 'A' | 'B' | 'C' | 'D';
+    },
   ): void {
     const profile = this.getProfile();
     profile.ryo += ryoEarned;
@@ -230,7 +265,66 @@ export class SaveSystem {
       profile.bossesDefeated += 1;
       profile.scrolls += 1;
     }
+    if (isVictory) {
+      profile.victories = (profile.victories || 0) + 1;
+      profile.scrolls += 3;
+    }
+
+    if (runDetails?.characterId && runDetails?.characterName) {
+      if (!profile.runHistory) profile.runHistory = [];
+      const entry: RunHistoryEntry = {
+        characterId: runDetails.characterId,
+        characterName: runDetails.characterName,
+        elapsedSec: Math.floor(elapsedSec),
+        level,
+        kills,
+        ryo: ryoEarned,
+        stageName: runDetails.stageName || 'Villaggio della Foglia',
+        grade: runDetails.grade || (isVictory ? 'S' : elapsedSec >= 600 ? 'A' : elapsedSec >= 300 ? 'B' : 'C'),
+        isVictory,
+        date: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      };
+      profile.runHistory.unshift(entry);
+      if (profile.runHistory.length > 10) {
+        profile.runHistory.pop();
+      }
+    }
+
+    // Update dynamic ninja rank
+    const calculated = this.getCalculatedNinjaRank(profile);
+    profile.ninjaRank = calculated.title;
+
     this.saveProfile(profile);
+  }
+
+  static getCalculatedNinjaRank(profile: PlayerProfile): { title: string; badge: string; color: number } {
+    const { totalRuns, bossesDefeated, bestTimeSec, victories = 0 } = profile;
+    if (victories >= 3 || (bestTimeSec >= 1080 && bossesDefeated >= 10)) {
+      return { title: 'Hokage del Villaggio della Foglia', badge: '👑 HOKAGE', color: 0xF59E0B };
+    }
+    if (bossesDefeated >= 6 || bestTimeSec >= 720) {
+      return { title: 'Sannin Leggendario della Foglia', badge: '🐍 SANNIN', color: 0xA855F7 };
+    }
+    if (bestTimeSec >= 480 || totalRuns >= 15) {
+      return { title: 'Squadra Speciale ANBU', badge: '🎭 ANBU', color: 0x38BDF8 };
+    }
+    if (bestTimeSec >= 300 || totalRuns >= 8) {
+      return { title: 'Jōnin d\'Elite di Konoha', badge: '⚔️ JŌNIN', color: 0x10B981 };
+    }
+    if (bestTimeSec >= 180 || totalRuns >= 3) {
+      return { title: 'Chūnin Esperto della Foglia', badge: '🎖️ CHŪNIN', color: 0xEAB308 };
+    }
+    return { title: 'Genin Promettente di Konoha', badge: '🍃 GENIN', color: 0x22C55E };
+  }
+
+  static recordPlusEvolution(): void {
+    const profile = this.getProfile();
+    profile.plusEvolutionsCount = (profile.plusEvolutionsCount || 0) + 1;
+    this.saveProfile(profile);
+  }
+
+  static getPlusEvolutionsCount(): number {
+    return this.getProfile().plusEvolutionsCount || 0;
   }
 
   static getNextRunBuffs(): NextRunBuffs {
