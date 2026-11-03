@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="fireCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="25%" stop-color="#f59e0b"/>
+      <stop offset="65%" stop-color="#ea580c"/>
+      <stop offset="85%" stop-color="#b91c1c"/>
+      <stop offset="100%" stop-color="#450a0a"/>
+    </radialGradient>
+    <filter id="fireGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#180505" stroke="#f97316" stroke-width="2.5" filter="url(#fireGlow)"/>
+
+  <!-- Outer Roaring Flame Tongues -->
+  <path d="M50 10 Q58 24 72 20 Q68 34 84 38 Q74 48 88 60 Q72 68 76 84 Q62 76 50 90 Q38 76 24 84 Q28 68 12 60 Q26 48 16 38 Q32 34 28 20 Q42 24 50 10 Z" fill="#b91c1c" filter="url(#fireGlow)" opacity="0.75"/>
+  <path d="M50 16 Q56 28 68 25 Q64 36 78 40 Q68 50 80 60 Q66 66 70 78 Q58 72 50 82 Q42 72 30 78 Q34 66 20 60 Q32 50 22 40 Q36 36 32 25 Q44 28 50 16 Z" fill="#ea580c"/>
+
+  <!-- Colossal Fireball Sphere -->
+  <circle cx="50" cy="52" r="28" fill="url(#fireCore)" filter="url(#fireGlow)"/>
+
+  <!-- Blazing Concentric Fire Spirals -->
+  <path d="M50 28 C64 28 74 38 74 52 C74 64 64 72 52 72 C42 72 36 64 36 54 C36 46 42 42 48 42 C54 42 56 46 56 50" fill="none" stroke="#fef08a" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Uchiha Hand Torch Emblem Accent -->
+  <ellipse cx="50" cy="52" rx="14" ry="14" fill="#ffffff" opacity="0.85" filter="url(#fireGlow)"/>
+  <circle cx="50" cy="52" r="7" fill="#ffffff"/>
+
+  <!-- Blazing Embers -->
+  <circle cx="34" cy="22" r="2.5" fill="#fef08a"/>
+  <circle cx="68" cy="24" r="2" fill="#f59e0b"/>
+  <circle cx="78" cy="74" r="2.2" fill="#ea580c"/>
+  <circle cx="20" cy="70" r="2" fill="#ea580c"/>
+</svg>

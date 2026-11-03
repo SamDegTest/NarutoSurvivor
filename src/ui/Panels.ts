@@ -2,7 +2,7 @@ import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { renderStars } from '../systems/promotionSystem';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
-import { createNarutoIcon, ICON_PATHS } from '../rendering/IconManager';
+import { createNarutoIcon, resolveIconPath } from '../rendering/IconManager';
 import type { StarRank } from '../types/character';
 
 // ============================================================
@@ -41,7 +41,7 @@ export interface UpgradeTarget {
 export const UPGRADE_POOL: UpgradeOption[] = [
   {
     id: 'hp_up',
-    icon: '❤️',
+    icon: '/icons/stat_hp.svg',
     title: 'Vitalità del Ninja',
     description: '+30% HP massimo e cura istantanea del 20%',
     color: 0xEF4444,
@@ -53,7 +53,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'dmg_up',
-    icon: '⚡',
+    icon: '/icons/stat_dmg.svg',
     title: 'Chakra Concentrato',
     description: '+25% Danno Jutsu',
     color: 0xF97316,
@@ -61,7 +61,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'speed_up',
-    icon: '💨',
+    icon: '/icons/stat_speed.svg',
     title: 'Velocità del Vento',
     description: '+20% Velocità di Movimento',
     color: 0x86EFAC,
@@ -69,7 +69,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'cooldown_down',
-    icon: '🌀',
+    icon: '/icons/chakra_orb.svg',
     title: 'Flusso del Chakra',
     description: '-20% Cooldown Jutsu',
     color: 0x60A5FA,
@@ -77,7 +77,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'crit_up',
-    icon: '💥',
+    icon: '/icons/stat_crit.svg',
     title: 'Occhio del Predatore',
     description: '+12% Probabilità Critico',
     color: 0xFBBF24,
@@ -85,7 +85,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'crit_dmg_up',
-    icon: '🔥',
+    icon: '/icons/stat_crit.svg',
     title: 'Colpo Letale',
     description: '+40% Danno Critico',
     color: 0xFDE68A,
@@ -93,7 +93,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'collect_up',
-    icon: '◉',
+    icon: '/icons/item_magnet.svg',
     title: 'Attrattore di Chakra',
     description: '+60px Raggio Raccolta Orb Chakra',
     color: 0x22D3EE,
@@ -101,7 +101,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'defense_up',
-    icon: '🛡️',
+    icon: '/icons/stat_defense.svg',
     title: 'Corpo di Pietra',
     description: '+20 Riduzione Danno Flat',
     color: 0x9CA3AF,
@@ -109,7 +109,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'ryo_up',
-    icon: '¥',
+    icon: '/icons/currency_ryo.jpg',
     title: 'Mercante di Konoha',
     description: '+50% Moltiplicatore Ryo',
     color: 0xFBBF24,
@@ -117,7 +117,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'orb_up',
-    icon: '✨',
+    icon: '/icons/chakra_orb.svg',
     title: 'Chakra Potenziato',
     description: '+40% Valore Orb Chakra',
     color: 0xA78BFA,
@@ -125,7 +125,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'heal',
-    icon: '💚',
+    icon: '/icons/stat_hp.svg',
     title: 'Tecnica di Guarigione',
     description: 'Recupera 40% degli HP mancanti',
     color: 0x22C55E,
@@ -133,7 +133,7 @@ export const UPGRADE_POOL: UpgradeOption[] = [
   },
   {
     id: 'dmg_crit_combo',
-    icon: '🌟',
+    icon: '/icons/stat_crit.svg',
     title: 'Jutsu Segreto',
     description: '+15% DMG e +8% Critico',
     color: 0xE879F9,
@@ -348,9 +348,9 @@ export class LevelUpPanel {
 
     // Icon (Authentic Naruto Image or fallback)
     let iconElem: Container;
-    const iconKey = ICON_PATHS[opt.id] ? opt.id : (opt.type && ICON_PATHS[opt.type] ? opt.type : null);
-    if (iconKey) {
-      iconElem = createNarutoIcon(iconKey, (isPlus || isSyn) ? 46 : 42);
+    const resolved = resolveIconPath(opt.id) || resolveIconPath(opt.icon) || resolveIconPath(opt.type);
+    if (resolved) {
+      iconElem = createNarutoIcon(opt.id || opt.icon || '', (isPlus || isSyn) ? 46 : 42, true, isPlus);
       iconElem.x = W / 2;
       iconElem.y = 44;
     } else {

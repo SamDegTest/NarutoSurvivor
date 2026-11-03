@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="toolWindBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#064e3b"/>
+      <stop offset="100%" stop-color="#022c22"/>
+    </radialGradient>
+    <filter id="toolWindGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#022c22" stroke="#34d399" stroke-width="2.5" filter="url(#toolWindGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#toolWindBg)"/>
+
+  <!-- Unfurled Ninja Scroll Parchment -->
+  <rect x="22" y="30" width="56" height="40" rx="3" fill="#fef3c7" stroke="#b45309" stroke-width="1.8"/>
+  <!-- Wooden Scroll Handles -->
+  <rect x="18" y="24" width="7" height="52" rx="3" fill="#78350f" stroke="#451a03" stroke-width="1.5"/>
+  <rect x="75" y="24" width="7" height="52" rx="3" fill="#78350f" stroke="#451a03" stroke-width="1.5"/>
+  <circle cx="21.5" cy="24" r="4" fill="#d97706"/>
+  <circle cx="21.5" cy="76" r="4" fill="#d97706"/>
+  <circle cx="78.5" cy="24" r="4" fill="#d97706"/>
+  <circle cx="78.5" cy="76" r="4" fill="#d97706"/>
+
+  <!-- Wind Kanji / Spiral Seal on Parchment -->
+  <path d="M50 42 C56 42 60 46 60 50 C60 54 54 58 48 56 C44 54 44 48 48 46" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"/>
+  <line x1="32" y1="38" x2="42" y2="38" stroke="#b45309" stroke-width="1.5"/>
+  <line x1="32" y1="62" x2="42" y2="62" stroke="#b45309" stroke-width="1.5"/>
+  <line x1="58" y1="38" x2="68" y2="38" stroke="#b45309" stroke-width="1.5"/>
+  <line x1="58" y1="62" x2="68" y2="62" stroke="#b45309" stroke-width="1.5"/>
+
+  <!-- Swirling Wind Streams around Scroll -->
+  <path d="M12 40 Q50 16 88 34" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <path d="M12 66 Q50 84 88 60" fill="none" stroke="#6ee7b7" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="waterBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#021f35"/>
+    </radialGradient>
+    <filter id="waterGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#021f35" stroke="#38bdf8" stroke-width="2.5" filter="url(#waterGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#waterBg)"/>
+
+  <!-- Coiling Serpentine Water Dragon Body -->
+  <path d="M16 84 C30 86 42 74 38 60 C34 46 54 44 60 36 C66 28 62 18 50 16" fill="none" stroke="#0284c7" stroke-width="12" stroke-linecap="round"/>
+  <path d="M16 84 C30 86 42 74 38 60 C34 46 54 44 60 36 C66 28 62 18 50 16" fill="none" stroke="#38bdf8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M16 84 C30 86 42 74 38 60 C34 46 54 44 60 36 C66 28 62 18 50 16" fill="none" stroke="#e0f2fe" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Roaring Water Dragon Head -->
+  <!-- Upper Snout & Horns -->
+  <path d="M46 16 L54 12 L64 16 L68 24 L56 26 L46 20 Z" fill="#0284c7" stroke="#e0f2fe" stroke-width="1.5" filter="url(#waterGlow)"/>
+  <!-- Antlers/Fins -->
+  <path d="M64 16 L76 10 L72 20 M68 24 L80 26 L72 32" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- Lower Jaw bared with razor fangs -->
+  <path d="M48 26 L56 34 L64 30" fill="none" stroke="#0284c7" stroke-width="3"/>
+  <polygon points="52,22 54,26 50,26" fill="#ffffff"/>
+  <polygon points="58,24 60,28 56,28" fill="#ffffff"/>
+
+  <!-- Piercing Water Eye -->
+  <circle cx="58" cy="18" r="2.5" fill="#fef08a" filter="url(#waterGlow)"/>
+
+  <!-- Foaming Waves & Water Splashes at Base -->
+  <path d="M12 84 Q24 74 36 84 Q48 76 60 84 Q72 74 88 84" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="26" cy="70" r="2" fill="#bae6fd"/>
+  <circle cx="70" cy="50" r="2.5" fill="#bae6fd"/>
+  <circle cx="44" cy="40" r="2" fill="#ffffff"/>
+</svg>

@@ -5,6 +5,7 @@ import { audioManager } from '../systems/audioManager';
 import { SaveSystem } from '../systems/saveSystem';
 import { GachaModal } from './GachaModal';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { buildCharacterPortrait } from '../rendering/SpriteFactory';
 import type { Character, StarRank, ElementalAffinity } from '../types/character';
 
 // ============================================================
@@ -890,12 +891,17 @@ export class CharacterSelectScreen {
     card.addChild(bg);
 
     // Avatar Circle
-    const avatar = new Graphics();
-    avatar.circle(36, 36, 22);
-    avatar.fill({ color: isUnlocked ? char.assets.color : 0x334155 });
-    // Headband Accent
-    avatar.rect(18, 33, 36, 6);
-    avatar.fill({ color: 0xFFFFFF, alpha: isUnlocked ? 0.35 : 0.08 });
+    const avatar = isUnlocked
+      ? buildCharacterPortrait(char, 20)
+      : new Graphics();
+    if (!isUnlocked) {
+      (avatar as Graphics).circle(0, 0, 20);
+      (avatar as Graphics).fill({ color: 0x334155 });
+      (avatar as Graphics).rect(-14, -3, 28, 6);
+      (avatar as Graphics).fill({ color: 0xFFFFFF, alpha: 0.08 });
+    }
+    avatar.x = 36;
+    avatar.y = 36;
     card.addChild(avatar);
 
     // Stars

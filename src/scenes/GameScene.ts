@@ -64,8 +64,20 @@ export interface PlayerSession {
   coopPartner?: Character;
 }
 
-// XP thresholds per level (index = level) — calibrated for fast early upgrades and smooth curve
-const XP_PER_LEVEL = [0, 25, 65, 130, 220, 340, 500, 720, 1000, 1350, 1800, 2350, 3000, 3800, 4800, 6000, 7500, 99999];
+// Handcrafted early XP curve (levels 1-16) for quick initial progression and smooth mid-game
+const BASE_XP_TABLE = [0, 25, 65, 130, 220, 340, 500, 720, 1000, 1350, 1800, 2350, 3000, 3800, 4800, 6000, 7500];
+
+/** Calculates XP needed to reach next level with infinite, smooth scaling beyond level 16 */
+export function getXpNeededForLevel(level: number): number {
+  if (level <= 0) return 25;
+  if (level < BASE_XP_TABLE.length) {
+    return BASE_XP_TABLE[level];
+  }
+  // Infinite scaling: starts at 7500 (level 16), smoothly adds +550 base XP + progressive factor per level
+  const extraLevels = level - (BASE_XP_TABLE.length - 1);
+  const lastBase = BASE_XP_TABLE[BASE_XP_TABLE.length - 1];
+  return Math.round(lastBase + extraLevels * 550 + Math.pow(extraLevels, 1.15) * 80);
+}
 
 export class GameScene {
   private readonly app: Application;
@@ -371,7 +383,7 @@ export class GameScene {
       id: charJutsuSlot.id,
       nameIT: charJutsuSlot.nameIT,
       nameJP: charJutsuSlot.nameJP,
-      icon: '🌀',
+      icon: `/icons/jutsu/${charJutsuSlot.id}.svg`,
       element: charJutsuSlot.element,
       behavior: charJutsuSlot.behavior,
       baseDmgCoeff: charJutsuSlot.baseDmgCoeff,
@@ -382,13 +394,13 @@ export class GameScene {
       evolutionReq: {
         statId: 'dmg_up',
         statName: 'Chakra Concentrato (Danno)',
-        statIcon: '⚡',
+        statIcon: '/icons/stat_dmg.svg',
         description: 'Richiede 1 potenziamento del Danno per risvegliare la forma Plus.',
       },
       plusEvolution: {
         nameIT: `${charJutsuSlot.nameIT} +`,
         nameJP: `${charJutsuSlot.nameJP}・極`,
-        icon: '🌀+',
+        icon: `/icons/jutsu/${charJutsuSlot.id}.svg`,
         description: `Evoluzione Suprema di ${charJutsuSlot.nameIT} con potenza e raggio raddoppiati!`,
         vfxColor: session.character.assets.color,
         dmgMultiplier: 2.0,
@@ -1609,8 +1621,10 @@ export class GameScene {
   }
 
   private checkLevelUp(): void {
-    const xpNeeded = XP_PER_LEVEL[Math.min(this.level, XP_PER_LEVEL.length - 1)] ?? 9999;
-    if (this.xp >= xpNeeded && this.level < XP_PER_LEVEL.length - 1) {
+    if (this.levelUpPanel.isVisible || this.promotionPanel.isVisible) return;
+
+    const xpNeeded = getXpNeededForLevel(this.level);
+    if (this.xp >= xpNeeded) {
       this.xp -= xpNeeded;
       this.level++;
       audioManager.playSFX('level_up');
@@ -1639,6 +1653,8 @@ export class GameScene {
                 }
               }
             }
+            // Check if player has accumulated enough XP for another level-up
+            this.checkLevelUp();
           },
           options,
           () => {
@@ -1711,7 +1727,7 @@ export class GameScene {
       if (hasRequiredTool && isHighLevel) {
         options.push({
           id: `synergy_${candidateRecipe.id}`,
-          icon: '🌟',
+          icon: '/icons/jutsu/jutsu_synergy.svg',
           title: candidateRecipe.nameIT,
           description: `${candidateRecipe.description} (+${Math.round((candidateRecipe.dmgMultiplier - 1) * 100)}% Danno)`,
           color: 0xFBBF24,
@@ -1792,7 +1808,7 @@ export class GameScene {
         } else {
           options.push({
             id: 'jutsu_mastery',
-            icon: '⚡',
+            icon: '/icons/chakra_orb.svg',
             title: 'Maestria del Chakra Shinobi',
             description: '+40% Danno a tutte le mosse Jutsu possedute',
             color: 0x38BDF8,
@@ -1841,7 +1857,7 @@ export class GameScene {
     } else {
       options.push({
         id: 'ninja_pouch_buff',
-        icon: '🎒',
+        icon: '/icons/menu_bag.jpg',
         title: 'Borsa Tattica Completa',
         description: '+25% Difesa e +20% Velocità di Raccolta Chakra',
         color: 0xEA580C,
@@ -2057,7 +2073,7 @@ export class GameScene {
   }
 
   private updateHUD(): void {
-    const xpToNext = XP_PER_LEVEL[Math.min(this.level, XP_PER_LEVEL.length - 1)] ?? 9999;
+    const xpToNext = getXpNeededForLevel(this.level);
     const diff = difficultyManager.getSnapshot(this.elapsedSec);
 
     let portalInfo: { screenX: number; screenY: number; dist: number; timeLeft: number; bossName: string; isReturn: boolean } | undefined;
@@ -2102,6 +2118,7 @@ export class GameScene {
       slots:         this.combatSlots.map((s, i) => ({
         id: s.id,
         moves: s.moves.map(m => ({
+          id: m.definition.id,
           icon: m.isPlus ? m.definition.plusEvolution.icon : m.definition.icon,
           name: m.isPlus ? m.definition.plusEvolution.nameIT : m.definition.nameIT,
           level: m.level,
@@ -2111,6 +2128,7 @@ export class GameScene {
         isActive: i === this.activeSlotIndex,
       })),
       activeJutsu:   this.combatSlots.flatMap(s => s.moves).map(m => ({
+        id: m.definition.id,
         icon: m.isPlus ? m.definition.plusEvolution.icon : m.definition.icon,
         name: m.isPlus ? m.definition.plusEvolution.nameIT : m.definition.nameIT,
         level: m.level,
@@ -2128,7 +2146,7 @@ export class GameScene {
       })),
       activeTools:   Array.from(this.acquiredTools.entries()).map(([id, lvl]) => {
         const tool = NINJA_TOOLS.find(t => t.id === id);
-        return { icon: tool?.icon || '🗡️', name: tool?.nameIT || id, level: lvl };
+        return { id, icon: tool?.icon || '🗡️', name: tool?.nameIT || id, level: lvl };
       }),
     });
   }

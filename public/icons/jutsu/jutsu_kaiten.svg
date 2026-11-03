@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="kaitenCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="30%" stop-color="#bae6fd"/>
+      <stop offset="70%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </radialGradient>
+    <filter id="kaitenGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#031525" stroke="#38bdf8" stroke-width="2.5" filter="url(#kaitenGlow)"/>
+
+  <!-- Rotating Dome Chakra Shield Outer Rim -->
+  <circle cx="50" cy="50" r="42" fill="none" stroke="#7dd3fc" stroke-width="2" stroke-dasharray="8,4" opacity="0.8"/>
+  <circle cx="50" cy="50" r="34" fill="url(#kaitenCore)" opacity="0.45" filter="url(#kaitenGlow)"/>
+
+  <!-- Eight Trigrams (Bagua) Yin-Yang Center Circle -->
+  <circle cx="50" cy="50" r="22" fill="#0f172a" stroke="#ffffff" stroke-width="1.8"/>
+  <path d="M50 28 A11 11 0 0 1 50 50 A11 11 0 0 0 50 72 A22 22 0 0 1 50 28 Z" fill="#ffffff"/>
+  <circle cx="50" cy="39" r="3" fill="#000000"/>
+  <circle cx="50" cy="61" r="3" fill="#ffffff"/>
+
+  <!-- High-Speed Circular Deflection Ribbons (Repelling Projectiles) -->
+  <ellipse cx="50" cy="50" rx="42" ry="14" fill="none" stroke="#ffffff" stroke-width="2.2" opacity="0.9" transform="rotate(-30 50 50)"/>
+  <ellipse cx="50" cy="50" rx="42" ry="14" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.8" transform="rotate(30 50 50)"/>
+
+  <!-- Deflected Projectile Sparks at Boundary -->
+  <polygon points="12,38 18,34 16,42" fill="#fef08a"/>
+  <polygon points="86,40 82,34 88,36" fill="#fef08a"/>
+</svg>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="hiraishinBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#422006"/>
+      <stop offset="100%" stop-color="#0a0501"/>
+    </radialGradient>
+    <filter id="yellowFlash" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#0a0501" stroke="#facc15" stroke-width="2.5" filter="url(#yellowFlash)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#hiraishinBg)"/>
+
+  <!-- Yellow Flash Lightning Teleportation Streaks -->
+  <line x1="14" y1="14" x2="86" y2="86" stroke="#fef08a" stroke-width="2" stroke-dasharray="8,4" opacity="0.7"/>
+  <line x1="86" y1="14" x2="14" y2="86" stroke="#fef08a" stroke-width="2" stroke-dasharray="8,4" opacity="0.7"/>
+
+  <!-- Minato's Signature 3-Pronged Special Flying Thunder God Kunai -->
+  <g transform="rotate(45 50 50)">
+    <!-- Main Center Blade -->
+    <polygon points="50,14 55,42 45,42" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+    <!-- Left Prong -->
+    <polygon points="45,34 38,40 45,44" fill="#cbd5e1" stroke="#64748b" stroke-width="1"/>
+    <!-- Right Prong -->
+    <polygon points="55,34 62,40 55,44" fill="#cbd5e1" stroke="#64748b" stroke-width="1"/>
+    <!-- Guard/Bolster -->
+    <rect x="42" y="44" width="16" height="4" rx="1.5" fill="#475569"/>
+    <!-- Handle Wrapped in Formula Tag -->
+    <rect x="47" y="48" width="6" height="26" fill="#fef08a" stroke="#b45309" stroke-width="1"/>
+    <!-- Formula Kanji Markings -->
+    <line x1="48" y1="52" x2="52" y2="52" stroke="#b45309" stroke-width="1.5"/>
+    <line x1="48" y1="58" x2="52" y2="58" stroke="#b45309" stroke-width="1.5"/>
+    <line x1="48" y1="64" x2="52" y2="64" stroke="#b45309" stroke-width="1.5"/>
+    <!-- Ring Pommel -->
+    <circle cx="50" cy="78" r="5" fill="none" stroke="#94a3b8" stroke-width="2.5"/>
+  </g>
+
+  <!-- Yellow Flash Teleportation Burst Center -->
+  <circle cx="50" cy="50" r="12" fill="#facc15" opacity="0.6" filter="url(#yellowFlash)"/>
+  <circle cx="50" cy="50" r="6" fill="#ffffff" filter="url(#yellowFlash)"/>
+</svg>

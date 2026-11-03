@@ -201,7 +201,7 @@ export interface EnemyRangedAttack {
 
 export class Enemy {
   readonly container: Container;
-  private readonly body: Graphics;
+  private readonly body: Container;
   private readonly eliteAura?: Graphics;
   private auraTimer = 0;
   private rangedCooldownTimer = 2.0 + Math.random() * 3.0;

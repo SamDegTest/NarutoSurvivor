@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="toolFireBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#451a03"/>
+      <stop offset="100%" stop-color="#140501"/>
+    </radialGradient>
+    <filter id="sealGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#140501" stroke="#f97316" stroke-width="2.5" filter="url(#sealGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#toolFireBg)"/>
+
+  <!-- Traditional Paper Talisman Tag -->
+  <polygon points="34,16 66,16 66,74 50,84 34,74" fill="#fef3c7" stroke="#b45309" stroke-width="2"/>
+
+  <!-- Burning Fire Kanji & Seal Script -->
+  <!-- 'Baku' / Explosive Fire Seal -->
+  <circle cx="50" cy="42" r="14" fill="none" stroke="#b91c1c" stroke-width="2"/>
+  <path d="M50 34 L50 50 M44 42 L56 42 M42 48 L58 48" stroke="#b91c1c" stroke-width="2" stroke-linecap="round"/>
+  <line x1="42" y1="62" x2="58" y2="62" stroke="#b91c1c" stroke-width="2"/>
+  <line x1="45" y1="68" x2="55" y2="68" stroke="#b91c1c" stroke-width="1.8"/>
+
+  <!-- Raging Flame Border catching fire -->
+  <path d="M30 68 Q24 50 32 40 Q38 46 36 34" fill="none" stroke="#ea580c" stroke-width="3" filter="url(#sealGlow)"/>
+  <path d="M70 68 Q76 50 68 40 Q62 46 64 34" fill="none" stroke="#ea580c" stroke-width="3" filter="url(#sealGlow)"/>
+  <circle cx="50" cy="84" r="3" fill="#fef08a" filter="url(#sealGlow)"/>
+</svg>

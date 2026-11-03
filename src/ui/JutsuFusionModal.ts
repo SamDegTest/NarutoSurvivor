@@ -1,6 +1,7 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { audioManager } from '../systems/audioManager';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon } from '../rendering/IconManager';
 import type { ActiveJutsuInstance } from '../data/jutsuCatalog';
 
 // ============================================================
@@ -202,10 +203,9 @@ export class JutsuFusionModal {
         iconBg.stroke({ color: move.definition.vfxColor, width: 1.2 });
         iconsCont.addChild(iconBg);
 
-        const iconTxt = makeText(move.definition.icon, 18, 0xFFFFFF);
-        iconTxt.anchor.set(0.5);
-        iconTxt.x = ix + 24; iconTxt.y = 18;
-        iconsCont.addChild(iconTxt);
+        const jutsuIcon = createNarutoIcon(move.definition.id, 26, true, move.isPlus);
+        jutsuIcon.x = ix + 24; jutsuIcon.y = 18;
+        iconsCont.addChild(jutsuIcon);
 
         ix += 54;
         if (mi < slot.moves.length - 1) {
@@ -297,10 +297,22 @@ export class JutsuFusionModal {
     this.previewContainer.addChild(comboTitle);
 
     const combinedMoves = [...slotA.moves, ...slotB.moves];
-    const icons = combinedMoves.map(m => m.definition.icon).join('  +  ');
-    const iconsTxt = makeText(icons, 18, 0xFFFFFF);
-    iconsTxt.x = 20; iconsTxt.y = 36;
-    this.previewContainer.addChild(iconsTxt);
+    let rowX = 20;
+    combinedMoves.forEach((m, idx) => {
+      const ic = createNarutoIcon(m.definition.id, 28, true, m.isPlus);
+      ic.x = rowX + 14;
+      ic.y = 44;
+      this.previewContainer.addChild(ic);
+      rowX += 34;
+      if (idx < combinedMoves.length - 1) {
+        const plusTxt = makeText('+', 14, 0xFBBF24, true);
+        plusTxt.anchor.set(0.5);
+        plusTxt.x = rowX + 4;
+        plusTxt.y = 44;
+        this.previewContainer.addChild(plusTxt);
+        rowX += 16;
+      }
+    });
 
     const desc = makeText(
       `Tutte le ${totalMoves} tecniche scatteranno simultaneamente quando questo slot è attivo! (+25% Danno di risonanza)`,
@@ -308,7 +320,7 @@ export class JutsuFusionModal {
       0x34D399,
       true,
     );
-    desc.x = 280; desc.y = 40;
+    desc.x = Math.max(220, rowX + 24); desc.y = 40;
     this.previewContainer.addChild(desc);
   }
 

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="kujakuBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7c2d12"/>
+      <stop offset="100%" stop-color="#180501"/>
+    </radialGradient>
+    <filter id="kujakuGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#180501" stroke="#f97316" stroke-width="2.5" filter="url(#kujakuGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#kujakuBg)"/>
+
+  <!-- Radiating Peacock Feather Fan of Flaming Punches (8-Gate Gate of Joy) -->
+  <!-- Center Base (Guy's Fist Launch Point) -->
+  <circle cx="50" cy="74" r="10" fill="#ea580c" filter="url(#kujakuGlow)"/>
+
+  <!-- Searing Fan Rays (Peacock Feathers) -->
+  <path d="M50 74 L18 30" stroke="#f97316" stroke-width="3" stroke-linecap="round"/>
+  <path d="M50 74 L32 20" stroke="#f97316" stroke-width="3" stroke-linecap="round"/>
+  <path d="M50 74 L50 14" stroke="#f97316" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M50 74 L68 20" stroke="#f97316" stroke-width="3" stroke-linecap="round"/>
+  <path d="M50 74 L82 30" stroke="#f97316" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Exploding Supersonic Fireballs at Feather Tips -->
+  <circle cx="18" cy="30" r="7" fill="#facc15" stroke="#ef4444" stroke-width="1.5" filter="url(#kujakuGlow)"/>
+  <circle cx="32" cy="20" r="7.5" fill="#facc15" stroke="#ef4444" stroke-width="1.5" filter="url(#kujakuGlow)"/>
+  <circle cx="50" cy="14" r="8.5" fill="#ffffff" stroke="#ef4444" stroke-width="1.8" filter="url(#kujakuGlow)"/>
+  <circle cx="68" cy="20" r="7.5" fill="#facc15" stroke="#ef4444" stroke-width="1.5" filter="url(#kujakuGlow)"/>
+  <circle cx="82" cy="30" r="7" fill="#facc15" stroke="#ef4444" stroke-width="1.5" filter="url(#kujakuGlow)"/>
+
+  <!-- Core Brilliant White Impact Flares -->
+  <circle cx="18" cy="30" r="2.5" fill="#ffffff"/>
+  <circle cx="32" cy="20" r="3" fill="#ffffff"/>
+  <circle cx="50" cy="14" r="4" fill="#ffffff"/>
+  <circle cx="68" cy="20" r="3" fill="#ffffff"/>
+  <circle cx="82" cy="30" r="2.5" fill="#ffffff"/>
+</svg>

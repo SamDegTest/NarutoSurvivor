@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="synCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#fde047"/>
+      <stop offset="70%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </radialGradient>
+    <filter id="synGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#1c0a00" stroke="#facc15" stroke-width="2.5" filter="url(#synGlow)"/>
+
+  <!-- Dual Swirling Elemental Helix Arms -->
+  <path d="M50 16 C68 16 82 30 82 50 C82 66 68 80 50 80 C36 80 28 70 28 58 C28 48 36 42 44 42 C50 42 54 46 54 50" fill="none" stroke="#38bdf8" stroke-width="3.5" stroke-linecap="round" opacity="0.9" filter="url(#synGlow)"/>
+  <path d="M50 84 C32 84 18 70 18 50 C18 34 32 20 50 20 C64 20 72 30 72 42 C72 52 64 58 56 58 C50 58 46 54 46 50" fill="none" stroke="#f97316" stroke-width="3.5" stroke-linecap="round" opacity="0.9" filter="url(#synGlow)"/>
+
+  <!-- Brilliant Synergy Awakening Star Core -->
+  <circle cx="50" cy="50" r="14" fill="url(#synCore)" filter="url(#synGlow)"/>
+  <polygon points="50,28 54,44 70,50 54,56 50,72 46,56 30,50 46,44" fill="#ffffff" filter="url(#synGlow)"/>
+  <circle cx="50" cy="50" r="5" fill="#ffffff"/>
+</svg>

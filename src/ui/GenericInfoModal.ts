@@ -1,5 +1,6 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { GamepadMenuNavigator } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon, resolveIconPath } from '../rendering/IconManager';
 
 // ============================================================
 //  NarutoSurvivor — Generic Themed Info Modal
@@ -127,9 +128,15 @@ export class GenericInfoModal {
       row.addChild(bg);
 
       if (item.icon) {
-        const ic = makeText(item.icon, 22, 0xFFFFFF);
-        ic.x = 18; ic.y = 14;
-        row.addChild(ic);
+        if (resolveIconPath(item.icon)) {
+          const ic = createNarutoIcon(item.icon, 28, true);
+          ic.x = 28; ic.y = 33;
+          row.addChild(ic);
+        } else {
+          const ic = makeText(item.icon, 22, 0xFFFFFF);
+          ic.x = 18; ic.y = 14;
+          row.addChild(ic);
+        }
       }
 
       const t = makeText(item.title, 14, 0xFFFFFF, true);

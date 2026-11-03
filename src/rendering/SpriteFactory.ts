@@ -1,4 +1,4 @@
-import { Container, Graphics } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite } from 'pixi.js';
 import type { Character, ElementalAffinity } from '../types/character';
 import type { EnemyConfig } from '../entities/entities';
 import type { BossConfig } from '../entities/bosses';
@@ -75,6 +75,34 @@ function headbandColor(id: string): number {
 
 export function buildPlayerSprite(character: Character): Container {
   const root = new Container();
+  const procedural = buildProceduralPlayerGraphics(character);
+  root.addChild(procedural);
+
+  // Dynamic Sprite loading from public/sprites/characters/<id>.png
+  const spritePath = `/sprites/characters/${character.id}.png`;
+  const applyTexture = (tex: any) => {
+    if (!tex || !tex.source || tex.source.width === 0) return;
+    if (tex.source.scaleMode !== undefined) tex.source.scaleMode = 'nearest';
+    const sprite = Sprite.from(tex);
+    sprite.anchor.set(0.5, 0.7);
+    const targetH = 38;
+    const scale = targetH / (sprite.texture.source.height || targetH);
+    sprite.scale.set(scale);
+
+    root.removeChildren();
+    root.addChild(sprite);
+  };
+
+  if (Assets.cache.has(spritePath)) {
+    applyTexture(Assets.get(spritePath));
+  } else {
+    Assets.load(spritePath).then(applyTexture).catch(() => {});
+  }
+
+  return root;
+}
+
+function buildProceduralPlayerGraphics(character: Character): Graphics {
   const g = new Graphics();
   const id = character.id;
 
@@ -167,8 +195,7 @@ export function buildPlayerSprite(character: Character): Container {
     px(g,  4 * S, -2 * S, 2 * S, 1, 0xD97706);
   }
 
-  root.addChild(g);
-  return root;
+  return g;
 }
 
 function drawHair(g: Graphics, id: string, color: number, S: number): void {
@@ -214,7 +241,8 @@ function drawHair(g: Graphics, id: string, color: number, S: number): void {
 //  ENEMY SPRITES
 // ═══════════════════════════════════════════════════════════════
 
-export function buildEnemySprite(config: EnemyConfig): Graphics {
+export function buildEnemySprite(config: EnemyConfig): Container {
+  const root = new Container();
   const g = new Graphics();
 
   switch (config.type) {
@@ -224,8 +252,30 @@ export function buildEnemySprite(config: EnemyConfig): Graphics {
     case 'summon':       drawSummon(g, config.size, config.color);       break;
     default:             drawGenericEnemy(g, config.size, config.color);
   }
+  root.addChild(g);
 
-  return g;
+  // Dynamic Sprite loading from public/sprites/enemies/<type>.png
+  const spritePath = `/sprites/enemies/${config.type}.png`;
+  const applyTexture = (tex: any) => {
+    if (!tex || !tex.source || tex.source.width === 0) return;
+    if (tex.source.scaleMode !== undefined) tex.source.scaleMode = 'nearest';
+    const sprite = Sprite.from(tex);
+    sprite.anchor.set(0.5);
+    const targetH = config.size * 2.2;
+    const scale = targetH / (sprite.texture.source.height || targetH);
+    sprite.scale.set(scale);
+
+    root.removeChildren();
+    root.addChild(sprite);
+  };
+
+  if (Assets.cache.has(spritePath)) {
+    applyTexture(Assets.get(spritePath));
+  } else {
+    Assets.load(spritePath).then(applyTexture).catch(() => {});
+  }
+
+  return root;
 }
 
 function drawZetsu(g: Graphics, size: number, color: number): void {
@@ -373,7 +423,8 @@ function drawGenericEnemy(g: Graphics, size: number, color: number): void {
 //  BOSS SPRITES
 // ═══════════════════════════════════════════════════════════════
 
-export function buildBossSprite(config: BossConfig, isPhase2 = false): Graphics {
+export function buildBossSprite(config: BossConfig, isPhase2 = false): Container {
+  const root = new Container();
   const g = new Graphics();
   const s = config.size;
 
@@ -385,8 +436,41 @@ export function buildBossSprite(config: BossConfig, isPhase2 = false): Graphics 
     default:
       drawGenericBoss(g, s, config.color, config.accentColor, isPhase2);
   }
+  root.addChild(g);
 
-  return g;
+  // Dynamic Sprite loading from public/sprites/bosses/<type>[_phase2].png
+  const suffix = isPhase2 ? '_phase2' : '';
+  const phasePath = `/sprites/bosses/${config.type}${suffix}.png`;
+  const basePath = `/sprites/bosses/${config.type}.png`;
+
+  const applyTexture = (tex: any) => {
+    if (!tex || !tex.source || tex.source.width === 0) return;
+    if (tex.source.scaleMode !== undefined) tex.source.scaleMode = 'nearest';
+    const sprite = Sprite.from(tex);
+    sprite.anchor.set(0.5);
+    const targetH = s * 2.5;
+    const scale = targetH / (sprite.texture.source.height || targetH);
+    sprite.scale.set(scale);
+
+    root.removeChildren();
+    root.addChild(sprite);
+  };
+
+  if (isPhase2 && Assets.cache.has(phasePath)) {
+    applyTexture(Assets.get(phasePath));
+  } else if (Assets.cache.has(basePath)) {
+    applyTexture(Assets.get(basePath));
+  } else {
+    Assets.load(phasePath)
+      .then(applyTexture)
+      .catch(() => {
+        if (isPhase2) {
+          Assets.load(basePath).then(applyTexture).catch(() => {});
+        }
+      });
+  }
+
+  return root;
 }
 
 function drawKisame(g: Graphics, s: number, p2: boolean): void {
@@ -593,4 +677,55 @@ function drawGenericBoss(g: Graphics, s: number, color: number, accent: number, 
     g.circle(ex, -6, 7); g.fill({ color: p2 ? 0xFF0000 : accent });
     g.circle(ex, -6, 3); g.fill({ color: 0x000000 });
   });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PORTRAIT HELPER
+// ═══════════════════════════════════════════════════════════════
+
+export function buildCharacterPortrait(character: Character, radius = 24): Container {
+  const root = new Container();
+  const fallback = new Graphics();
+  fallback.circle(0, 0, radius);
+  fallback.fill({ color: character.assets.color });
+  fallback.rect(-radius * 0.7, -radius * 0.15, radius * 1.4, radius * 0.3);
+  fallback.fill({ color: 0xFFFFFF, alpha: 0.35 });
+  root.addChild(fallback);
+
+  const portraitPath = `/sprites/portraits/${character.id}.png`;
+  const spritePath = `/sprites/characters/${character.id}.png`;
+
+  const applyTexture = (tex: any) => {
+    if (!tex || !tex.source || tex.source.width === 0) return;
+    if (tex.source.scaleMode !== undefined) tex.source.scaleMode = 'nearest';
+    const sprite = Sprite.from(tex);
+    sprite.anchor.set(0.5);
+    const target = radius * 2;
+    const maxSide = Math.max(sprite.texture.source.width, sprite.texture.source.height) || target;
+    const scale = target / maxSide;
+    sprite.scale.set(scale);
+
+    const mask = new Graphics();
+    mask.circle(0, 0, radius);
+    mask.fill({ color: 0xffffff });
+    sprite.mask = mask;
+
+    root.removeChildren();
+    root.addChild(mask);
+    root.addChild(sprite);
+  };
+
+  if (Assets.cache.has(portraitPath)) {
+    applyTexture(Assets.get(portraitPath));
+  } else if (Assets.cache.has(spritePath)) {
+    applyTexture(Assets.get(spritePath));
+  } else {
+    Assets.load(portraitPath)
+      .then(applyTexture)
+      .catch(() => {
+        Assets.load(spritePath).then(applyTexture).catch(() => {});
+      });
+  }
+
+  return root;
 }

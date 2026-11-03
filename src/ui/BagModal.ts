@@ -2,6 +2,7 @@ import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { SaveSystem, type NextRunBuffs } from '../systems/saveSystem';
 import { audioManager } from '../systems/audioManager';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
+import { createNarutoIcon, resolveIconPath } from '../rendering/IconManager';
 
 // ============================================================
 //  NarutoSurvivor — BagModal (Borsa Ninja / Tactical Inventory)
@@ -386,10 +387,16 @@ export class BagModal {
       iconBg.fill({ color: 0x1E293B });
       card.addChild(iconBg);
 
-      const iconTxt = makeText(item.icon, 24, 0xFFFFFF);
-      iconTxt.anchor.set(0.5);
-      iconTxt.x = 34; iconTxt.y = 44;
-      card.addChild(iconTxt);
+      if (resolveIconPath(item.id) || resolveIconPath(item.icon)) {
+        const ic = createNarutoIcon(item.id || item.icon, 36, true);
+        ic.x = 34; ic.y = 44;
+        card.addChild(ic);
+      } else {
+        const iconTxt = makeText(item.icon, 24, 0xFFFFFF);
+        iconTxt.anchor.set(0.5);
+        iconTxt.x = 34; iconTxt.y = 44;
+        card.addChild(iconTxt);
+      }
 
       // Title
       const nameTxt = makeText(
@@ -463,11 +470,18 @@ export class BagModal {
     this.detailContainer.addChild(bg);
 
     // Header icon & name
-    const iconLarge = makeText(item.icon, 44, 0xFFFFFF);
-    iconLarge.anchor.set(0.5, 0);
-    iconLarge.x = panelW / 2;
-    iconLarge.y = 20;
-    this.detailContainer.addChild(iconLarge);
+    if (resolveIconPath(item.id) || resolveIconPath(item.icon)) {
+      const icLarge = createNarutoIcon(item.id || item.icon, 52, true);
+      icLarge.x = panelW / 2;
+      icLarge.y = 44;
+      this.detailContainer.addChild(icLarge);
+    } else {
+      const iconLarge = makeText(item.icon, 44, 0xFFFFFF);
+      iconLarge.anchor.set(0.5, 0);
+      iconLarge.x = panelW / 2;
+      iconLarge.y = 20;
+      this.detailContainer.addChild(iconLarge);
+    }
 
     const title = makeText(item.name, 14, 0xF97316, true);
     title.anchor.set(0.5, 0);

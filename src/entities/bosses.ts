@@ -115,7 +115,7 @@ export interface BossAttackResult {
 
 export class Boss {
   readonly container: Container;
-  private body: Graphics;
+  private body: Container;
   private readonly nameplate: Text;
   private readonly hpBarBg: Graphics;
   private readonly hpBarFill: Graphics;

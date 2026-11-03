@@ -5,6 +5,7 @@ import { audioManager } from '../systems/audioManager';
 import { renderStars } from '../systems/promotionSystem';
 import { GamepadMenuNavigator, type NavigatableItem } from '../controls/GamepadMenuNavigator';
 import { createNarutoIcon } from '../rendering/IconManager';
+import { buildCharacterPortrait } from '../rendering/SpriteFactory';
 import type { Character } from '../types/character';
 
 // ============================================================
@@ -49,7 +50,7 @@ export class MainMenuScreen {
   private scrollsPillText!: Text;
   private profilePillText!: Text;
   private showcaseCard!: Container;
-  private showcaseAvatar!: Graphics;
+  private showcaseAvatar!: Container;
   private showcaseName!: Text;
   private showcaseTags!: Container;
   private runsStatsText!: Text;
@@ -367,7 +368,7 @@ export class MainMenuScreen {
     this.showcaseCard.addChild(vortex);
 
     // Avatar
-    this.showcaseAvatar = new Graphics();
+    this.showcaseAvatar = new Container();
     this.showcaseCard.addChild(this.showcaseAvatar);
 
     // Click hint
@@ -676,11 +677,11 @@ export class MainMenuScreen {
     const rank = SaveSystem.getCharacterRank(char.id, char.baseRank);
 
     // Showcase Avatar
-    this.showcaseAvatar.clear();
-    this.showcaseAvatar.circle(120, 100, 46);
-    this.showcaseAvatar.fill({ color: char.assets.color });
-    this.showcaseAvatar.rect(80, 94, 80, 10);
-    this.showcaseAvatar.fill({ color: 0xFFFFFF, alpha: 0.35 });
+    this.showcaseAvatar.removeChildren();
+    const port = buildCharacterPortrait(char, 46);
+    port.x = 120;
+    port.y = 100;
+    this.showcaseAvatar.addChild(port);
 
     this.showcaseName.text = char.nameIT;
 

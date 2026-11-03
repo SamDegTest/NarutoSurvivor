@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="gianBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </radialGradient>
+    <filter id="gianGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#020617" stroke="#facc15" stroke-width="2.5" filter="url(#gianGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#gianBg)"/>
+
+  <!-- Kakuzu's Lightning Mask Silhouette at Left -->
+  <path d="M16 36 C16 26 26 22 34 26 C40 30 42 42 42 50 C42 58 40 70 34 74 C26 78 16 74 16 64 Z" fill="#312e81" stroke="#818cf8" stroke-width="1.8"/>
+  <circle cx="28" cy="40" r="3" fill="#facc15" filter="url(#gianGlow)"/>
+  <path d="M26 56 Q34 54 38 58" stroke="#000000" stroke-width="2" fill="none"/>
+
+  <!-- Colossal Piercing Lightning Spear/Lance from Mouth -->
+  <polygon points="38,50 86,45 82,50 86,55" fill="#ffffff" filter="url(#gianGlow)"/>
+  <line x1="38" y1="50" x2="90" y2="50" stroke="#fef08a" stroke-width="5" stroke-linecap="round" filter="url(#gianGlow)"/>
+  <line x1="38" y1="50" x2="88" y2="50" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Forked Electric Javelins branching outward -->
+  <path d="M54 50 L64 34 L74 36 M68 50 L78 66 L86 64" fill="none" stroke="#67e8f9" stroke-width="2.5" stroke-linecap="round" filter="url(#gianGlow)"/>
+  <path d="M44 48 L50 28 M48 52 L54 72" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round"/>
+</svg>

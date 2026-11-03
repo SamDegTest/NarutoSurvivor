@@ -8,6 +8,7 @@ import { createNarutoIcon } from '../rendering/IconManager';
 // ============================================================
 
 export interface HUDSlotMove {
+  id?: string;
   icon: string;
   name: string;
   level: number;
@@ -48,8 +49,8 @@ interface HUDData {
   paused: boolean;
   combinedActive: boolean;
   inputSource?: 'keyboard' | 'gamepad' | 'touch';
-  activeJutsu?: Array<{ icon: string; name: string; level: number; isPlus?: boolean }>;
-  activeTools?: Array<{ icon: string; name: string; level: number }>;
+  activeJutsu?: Array<{ id?: string; icon: string; name: string; level: number; isPlus?: boolean }>;
+  activeTools?: Array<{ id?: string; icon: string; name: string; level: number }>;
   jutsuStatuses?: HUDJutsuStatus[];
   slots?: HUDSlotData[];
   threatBadge?: string;
@@ -340,8 +341,13 @@ export class HUD {
         this.pauseOverlay.addChild(itemBox);
 
         // Icon + Name
-        const iconTxt = makeText(`${j.icon} ${j.name}`, 13, j.isPlus ? 0xFDE047 : 0xFFFFFF, true);
-        iconTxt.x = leftX + 12; iconTxt.y = jY + 8;
+        const icContainer = createNarutoIcon(j.id || j.icon, 24, true, j.isPlus);
+        icContainer.x = leftX + 22;
+        icContainer.y = jY + 16;
+        this.pauseOverlay.addChild(icContainer);
+
+        const iconTxt = makeText(j.name, 13, j.isPlus ? 0xFDE047 : 0xFFFFFF, true);
+        iconTxt.x = leftX + 40; iconTxt.y = jY + 8;
         this.pauseOverlay.addChild(iconTxt);
 
         // Level badge
@@ -361,7 +367,7 @@ export class HUD {
           statusStr = '🌟 REQUISITO SODDISFATTO! Apparirà nelle prossime scelte di Level Up!';
           statusColor = 0x34D399;
         } else if (j.level === 5 && !j.statRequirementMet) {
-          statusStr = `🔒 Requisito: Potenzia "${j.reqStatIcon} ${j.reqStatName}" per sbloccare la forma PLUS (+)`;
+          statusStr = `🔒 Requisito: Potenzia "${j.reqStatName}" per sbloccare la forma PLUS (+)`;
           statusColor = 0xF59E0B;
         } else {
           statusStr = `Progressione: Raggiungi prima il Livello 5 (${j.level}/5) per iniziare l'evoluzione`;
@@ -415,10 +421,15 @@ export class HUD {
     let toolY = colY + 200;
     if (data.activeTools && data.activeTools.length > 0) {
       data.activeTools.forEach(t => {
-        const tTxt = makeText(`${t.icon} ${t.name} (Lv. ${t.level})`, 10.5, 0xE2E8F0);
-        tTxt.x = rightX + 8; tTxt.y = toolY;
+        const ic = createNarutoIcon(t.id || t.icon, 18, true);
+        ic.x = rightX + 16;
+        ic.y = toolY + 6;
+        this.pauseOverlay.addChild(ic);
+
+        const tTxt = makeText(`${t.name} (Lv. ${t.level})`, 10.5, 0xE2E8F0);
+        tTxt.x = rightX + 30; tTxt.y = toolY;
         this.pauseOverlay.addChild(tTxt);
-        toolY += 20;
+        toolY += 22;
       });
     } else {
       const noneTxt = makeText('Nessuno strumento attivo', 10.5, 0x64748B);
@@ -596,20 +607,27 @@ export class HUD {
         const chip = new Container();
         chip.x = chipX;
         const bg = new Graphics();
-        const chipW = j.isPlus ? 56 : 48;
-        bg.roundRect(0, 0, chipW, 20, 5);
+        const chipW = j.isPlus ? 64 : 54;
+        bg.roundRect(0, 0, chipW, 22, 6);
         if (j.isPlus) {
           bg.fill({ color: 0x3B1D08, alpha: 0.95 });
-          bg.stroke({ color: 0xF59E0B, width: 2.2 });
+          bg.stroke({ color: 0xF59E0B, width: 2.0 });
         } else {
           bg.fill({ color: 0x1E293B, alpha: 0.90 });
           bg.stroke({ color: 0x38BDF8, width: 1.2 });
         }
         chip.addChild(bg);
-        const lvlStr = j.isPlus ? `${j.icon} 5+` : `${j.icon} ${j.level}`;
+
+        // Real Naruto Jutsu icon
+        const ic = createNarutoIcon(j.id || j.icon, 16, true, j.isPlus);
+        ic.x = 11;
+        ic.y = 11;
+        chip.addChild(ic);
+
+        const lvlStr = j.isPlus ? '5+' : `Lv.${j.level}`;
         const t = makeText(lvlStr, 9.5, j.isPlus ? 0xFDE047 : 0xE0F2FE, true);
-        t.anchor.set(0.5);
-        t.x = chipW / 2; t.y = 10;
+        t.anchor.set(0, 0.5);
+        t.x = 22; t.y = 11;
         chip.addChild(t);
         this.slotsContainer.addChild(chip);
         chipX += chipW + 4;
@@ -620,16 +638,23 @@ export class HUD {
         const chip = new Container();
         chip.x = chipX;
         const bg = new Graphics();
-        bg.roundRect(0, 0, 48, 20, 5);
+        const chipW = 54;
+        bg.roundRect(0, 0, chipW, 22, 6);
         bg.fill({ color: 0x13251A, alpha: 0.90 });
         bg.stroke({ color: 0x22C55E, width: 1.2 });
         chip.addChild(bg);
-        const txt = makeText(`${t.icon} ${t.level}`, 9.5, 0xDCFCE7, true);
-        txt.anchor.set(0.5);
-        txt.x = 24; txt.y = 10;
+
+        const ic = createNarutoIcon(t.id || t.icon, 16, true);
+        ic.x = 11;
+        ic.y = 11;
+        chip.addChild(ic);
+
+        const txt = makeText(`Lv.${t.level}`, 9.5, 0xDCFCE7, true);
+        txt.anchor.set(0, 0.5);
+        txt.x = 22; txt.y = 11;
         chip.addChild(txt);
         this.slotsContainer.addChild(chip);
-        chipX += 52;
+        chipX += chipW + 4;
       });
     }
 
@@ -734,16 +759,19 @@ export class HUD {
 
         // Icons
         const iconsCont = new Container();
-        iconsCont.x = 8; iconsCont.y = 20;
+        iconsCont.x = 8; iconsCont.y = 16;
         let ix = 0;
         slot.moves.forEach((move, mi) => {
-          const ic = makeText(move.icon, 16, 0xFFFFFF);
-          ic.x = ix;
+          const moveIconKey = move.id || move.icon;
+          const ic = createNarutoIcon(moveIconKey, 20, true, move.isPlus);
+          ic.x = ix + 10;
+          ic.y = 12;
           iconsCont.addChild(ic);
-          ix += 22;
+          ix += 24;
           if (mi < slot.moves.length - 1) {
             const plus = makeText('+', 11, 0xFBBF24, true);
-            plus.x = ix - 4; plus.y = 2;
+            plus.anchor.set(0.5);
+            plus.x = ix + 1; plus.y = 12;
             iconsCont.addChild(plus);
             ix += 12;
           }

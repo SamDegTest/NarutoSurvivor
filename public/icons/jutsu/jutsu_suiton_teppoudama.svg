@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="teppouBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#042038"/>
+    </radialGradient>
+    <radialGradient id="bulletCore" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#7dd3fc"/>
+      <stop offset="80%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </radialGradient>
+    <filter id="teppouGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#042038" stroke="#38bdf8" stroke-width="2.5" filter="url(#teppouGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#teppouBg)"/>
+
+  <!-- Trailing Splash Ripples -->
+  <ellipse cx="28" cy="62" rx="14" ry="8" fill="none" stroke="#bae6fd" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <ellipse cx="64" cy="28" rx="10" ry="6" fill="none" stroke="#bae6fd" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <!-- High-Pressure Spherical Water Cannon Bullets -->
+  <!-- Secondary Bullet (Small) -->
+  <circle cx="32" cy="62" r="14" fill="url(#bulletCore)" stroke="#e0f2fe" stroke-width="1.5" filter="url(#teppouGlow)"/>
+  <ellipse cx="29" cy="58" rx="4" ry="2" fill="#ffffff" opacity="0.9"/>
+
+  <!-- Secondary Bullet (Small 2) -->
+  <circle cx="68" cy="28" r="11" fill="url(#bulletCore)" stroke="#e0f2fe" stroke-width="1.2" filter="url(#teppouGlow)"/>
+  <ellipse cx="66" cy="25" rx="3" ry="1.5" fill="#ffffff" opacity="0.9"/>
+
+  <!-- Main Massive High Velocity Water Bullet -->
+  <circle cx="56" cy="52" r="22" fill="url(#bulletCore)" stroke="#ffffff" stroke-width="2.2" filter="url(#teppouGlow)"/>
+  <!-- Specular Aqueous Reflection -->
+  <ellipse cx="50" cy="44" rx="7" ry="3.5" fill="#ffffff" opacity="0.95"/>
+  <circle cx="44" cy="52" r="3" fill="#ffffff" opacity="0.8"/>
+
+  <!-- Aerodynamic Water Droplets Spray -->
+  <circle cx="84" cy="46" r="3" fill="#e0f2fe"/>
+  <circle cx="78" cy="66" r="2.5" fill="#e0f2fe"/>
+  <circle cx="16" cy="54" r="2" fill="#7dd3fc"/>
+</svg>

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="shanaroBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#831843"/>
+      <stop offset="100%" stop-color="#1f0410"/>
+    </radialGradient>
+    <filter id="sakuraGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#1f0410" stroke="#f43f5e" stroke-width="2.5" filter="url(#sakuraGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#shanaroBg)"/>
+
+  <!-- Ground-shattering Craters & Radial Bedrock Fractures -->
+  <path d="M50 50 L20 24 M50 50 L76 18 M50 50 L84 62 M50 50 L64 84 M50 50 L30 82 M50 50 L14 56" stroke="#fb7185" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="50" cy="50" r="38" fill="none" stroke="#fda4af" stroke-width="1.5" stroke-dasharray="5,5" opacity="0.7"/>
+
+  <!-- Powerful Clenched Chakra Fist Slamming Ground -->
+  <circle cx="50" cy="50" r="18" fill="#f43f5e" opacity="0.5" filter="url(#sakuraGlow)"/>
+  <!-- Gloved Fist Silhouette -->
+  <path d="M42 42 L58 42 L62 52 L56 60 L44 60 L38 52 Z" fill="#fecdd3" stroke="#e11d48" stroke-width="2"/>
+  <line x1="46" y1="42" x2="46" y2="52" stroke="#e11d48" stroke-width="1.5"/>
+  <line x1="50" y1="42" x2="50" y2="54" stroke="#e11d48" stroke-width="1.5"/>
+  <line x1="54" y1="42" x2="54" y2="52" stroke="#e11d48" stroke-width="1.5"/>
+
+  <!-- Scattering Sakura (Cherry Blossom) Petals -->
+  <path d="M26 34 C24 30 28 26 32 28 C36 30 32 36 28 36 Z" fill="#fda4af" filter="url(#sakuraGlow)"/>
+  <path d="M72 32 C70 28 74 24 78 26 C82 28 78 34 74 34 Z" fill="#fda4af" filter="url(#sakuraGlow)"/>
+  <path d="M68 68 C66 64 70 60 74 62 C78 64 74 70 70 70 Z" fill="#fda4af" filter="url(#sakuraGlow)"/>
+  <path d="M28 66 C26 62 30 58 34 60 C38 62 34 68 30 68 Z" fill="#fda4af" filter="url(#sakuraGlow)"/>
+
+  <!-- Center Impact Flash -->
+  <circle cx="50" cy="50" r="8" fill="#ffffff" filter="url(#sakuraGlow)"/>
+</svg>

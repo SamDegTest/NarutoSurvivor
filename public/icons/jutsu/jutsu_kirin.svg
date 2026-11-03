@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="kirinBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2e1065"/>
+      <stop offset="100%" stop-color="#090514"/>
+    </radialGradient>
+    <filter id="kirinGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#090514" stroke="#c084fc" stroke-width="2.5" filter="url(#kirinGlow)"/>
+  <circle cx="50" cy="50" r="44" fill="url(#kirinBg)"/>
+
+  <!-- Storm Cloud Mass at Zenith -->
+  <path d="M20 28 C20 18 32 14 42 16 C48 10 60 10 66 16 C76 14 84 20 84 28 C88 34 84 42 76 44 C70 48 30 48 24 44 C18 40 16 34 20 28 Z" fill="#3b0764" opacity="0.8"/>
+
+  <!-- Mythical Kirin Beast Roaring Lightning Head -->
+  <!-- Antler Horns -->
+  <path d="M42 28 L36 12 L28 16 M36 12 L44 8" fill="none" stroke="#e9d5ff" stroke-width="2.5" stroke-linecap="round" filter="url(#kirinGlow)"/>
+  <path d="M58 28 L64 12 L72 16 M64 12 L56 8" fill="none" stroke="#e9d5ff" stroke-width="2.5" stroke-linecap="round" filter="url(#kirinGlow)"/>
+
+  <!-- Draconic Jaw & Snout made of thunderbolts -->
+  <path d="M38 34 L50 28 L62 34 L66 48 L56 46 L60 62 L50 56 L40 62 L44 46 L34 48 Z" fill="#7c3aed" stroke="#c084fc" stroke-width="2" filter="url(#kirinGlow)"/>
+  <path d="M44 48 L50 44 L56 48 L54 58 L50 54 L46 58 Z" fill="#ffffff" filter="url(#kirinGlow)"/>
+
+  <!-- Fierce Lightning Fangs & Jaw -->
+  <path d="M42 62 L46 76 L50 72 L54 76 L58 62" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Piercing Celestial Eyes -->
+  <circle cx="44" cy="40" r="3" fill="#fef08a" filter="url(#kirinGlow)"/>
+  <circle cx="56" cy="40" r="3" fill="#fef08a" filter="url(#kirinGlow)"/>
+
+  <!-- Roaring Strike Lightning Strikes downwards -->
+  <path d="M50 72 L46 82 L54 86 L50 96" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" filter="url(#kirinGlow)"/>
+  <path d="M42 66 L30 84 L38 88 L26 96" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round"/>
+  <path d="M58 66 L70 84 L62 88 L74 96" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -8,6 +8,7 @@ import { CANONICAL_JUTSU_CATALOG } from '../data/jutsuCatalog';
 import { BOSS_CONFIGS } from '../entities/bosses';
 import { SaveSystem } from '../systems/saveSystem';
 import { audioManager } from '../systems/audioManager';
+import { getJutsuIconPath } from '../rendering/IconManager';
 
 export class BingoBookModal {
   private overlay: HTMLElement;
@@ -213,8 +214,8 @@ export class BingoBookModal {
               display: flex; flex-direction: column; gap: 8px;
             ">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 20px;">${j.icon}</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <img src="${getJutsuIconPath(j.id)}" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid #facc15; object-fit: cover; background: #0f172a; flex-shrink: 0;" alt="${j.nameIT}" />
                   <span style="font-weight: bold; font-size: 15px; color: #fff;">${j.nameIT}</span>
                 </div>
                 <span style="font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(99,102,241,0.25); color: #818cf8; border: 1px solid #6366f1;">
@@ -229,7 +230,10 @@ export class BingoBookModal {
                 margin-top: 4px; display: flex; flex-direction: column; gap: 4px;
               ">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 12px; font-weight: bold; color: #fde047;">✦ FORMA PLUS (+): ${j.plusEvolution.nameIT}</span>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <img src="${getJutsuIconPath(j.id)}" style="width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #f59e0b; object-fit: cover;" />
+                    <span style="font-size: 12px; font-weight: bold; color: #fde047;">✦ FORMA PLUS (+): ${j.plusEvolution.nameIT}</span>
+                  </div>
                   <span style="font-size: 10px; color: #f59e0b;">Cooldown ×${j.plusEvolution.cooldownMultiplier}</span>
                 </div>
                 <div style="font-size: 11px; color: #fef08a;">${j.plusEvolution.description}</div>
